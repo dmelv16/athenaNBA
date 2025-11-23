@@ -50,7 +50,7 @@ class DataLoader:
         with self.db.get_cursor() as cur:
             execute_values(cur, query, values)
         
-        logger.info(f"✓ {len(players_data)} players inserted/updated")
+        logger.info(f"{len(players_data)} players inserted/updated")
     
     def insert_teams(self, teams_data: List[Dict[str, Any]]):
         """
@@ -85,7 +85,7 @@ class DataLoader:
         with self.db.get_cursor() as cur:
             execute_values(cur, query, values)
         
-        logger.info(f"✓ {len(teams_data)} teams inserted/updated")
+        logger.info(f"{len(teams_data)} teams inserted/updated")
     
     def insert_dataframe(
         self,
@@ -127,7 +127,7 @@ class DataLoader:
         try:
             with self.db.get_cursor() as cur:
                 execute_values(cur, query, values)
-            logger.info(f"✓ Inserted {len(df)} rows into {table_name}")
+            logger.info(f"Inserted {len(df)} rows into {table_name}")
         except Exception as e:
             logger.error(f"✗ Failed to insert into {table_name}: {e}")
             raise
@@ -160,4 +160,4 @@ class DataLoader:
             self.insert_dataframe(batch, table_name, conflict_columns)
             logger.info(f"  Progress: {min(i + batch_size, total_rows)}/{total_rows} rows")
         
-        logger.info(f"✓ Bulk insert completed: {total_rows} rows into {table_name}")
+        logger.info(f"Bulk insert completed: {total_rows} rows into {table_name}")

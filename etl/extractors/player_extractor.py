@@ -4,11 +4,20 @@ Extractor for player-specific NBA data
 
 from typing import Optional
 import pandas as pd
-from nba_api.stats.endpoints import (
-    playergamelog,
-    playerdashboardbyopponent,
-    playerdashboardbygeneralsplits
-)
+from nba_api.stats.endpoints import playergamelog, playerdashboardbygeneralsplits
+
+# Import available dashboard endpoints
+try:
+    from nba_api.stats.endpoints import playervsplayer
+    PLAYERVSPLAYER_AVAILABLE = True
+except ImportError:
+    PLAYERVSPLAYER_AVAILABLE = False
+
+try:
+    from nba_api.stats.endpoints import playerdashboardbyteamperformance
+    TEAM_PERFORMANCE_AVAILABLE = True
+except ImportError:
+    TEAM_PERFORMANCE_AVAILABLE = False
 
 from extractors.base_extractor import BaseExtractor
 from utils.logger import get_logger
@@ -50,7 +59,7 @@ class PlayerDataExtractor(BaseExtractor):
             if not df.empty:
                 df['season'] = season
                 df.columns = df.columns.str.lower()
-                logger.debug(f"  ✓ {player_name} ({season}): {len(df)} games")
+                logger.debug(f"  {player_name} ({season}): {len(df)} games")
             
             return df
         
@@ -68,7 +77,8 @@ class PlayerDataExtractor(BaseExtractor):
         player_name: str = "Unknown"
     ) -> Optional[pd.DataFrame]:
         """
-        Get player statistics vs each opponent
+        Get player statistics by team performance (opponent stats alternative)
+        Note: playerdashboardbyopponent doesn't exist, using team performance instead
         
         Args:
             player_id: NBA player ID
@@ -76,26 +86,35 @@ class PlayerDataExtractor(BaseExtractor):
             player_name: Player name for logging
             
         Returns:
-            DataFrame with opponent stats or None if failed
+            DataFrame with team performance stats or None if failed
         """
+        if not TEAM_PERFORMANCE_AVAILABLE:
+            logger.debug(f"  ⚠ Team performance endpoint not available for {player_name}")
+            return None
+            
         def _extract():
-            opp_stats = playerdashboardbyopponent.PlayerDashboardByOpponent(
+            team_perf = playerdashboardbyteamperformance.PlayerDashboardByTeamPerformance(
                 player_id=player_id,
                 season=season
             )
-            df = opp_stats.get_data_frames()[0]
+            # Get the opponent stats dataframe (usually index 1)
+            dfs = team_perf.get_data_frames()
+            if len(dfs) > 1:
+                df = dfs[1]  # Usually opponent data is in the second dataframe
+            else:
+                df = dfs[0]
             
             if not df.empty:
                 df['season'] = season
                 df.columns = df.columns.str.lower()
-                logger.debug(f"  ✓ {player_name} ({season}): opponent stats")
+                logger.debug(f"  {player_name} ({season}): team performance stats")
             
             return df
         
         result = self.extract_with_retry(_extract)
         
         if result is None or result.empty:
-            logger.debug(f"  ✗ {player_name} ({season}): No opponent stats")
+            logger.debug(f"  ✗ {player_name} ({season}): No team performance stats")
         
         return result
     
@@ -127,7 +146,7 @@ class PlayerDataExtractor(BaseExtractor):
                 df['season'] = season
                 df.columns = df.columns.str.lower()
                 df['split_type'] = 'general'
-                logger.debug(f"  ✓ {player_name} ({season}): splits")
+                logger.debug(f"  {player_name} ({season}): splits")
             
             return df
         

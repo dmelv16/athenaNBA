@@ -46,7 +46,7 @@ class TeamDataExtractor(BaseExtractor):
             if not df.empty:
                 df['season'] = season
                 df.columns = df.columns.str.lower()
-                logger.debug(f"  ✓ {team_name} ({season}): {len(df)} games")
+                logger.debug(f"  {team_name} ({season}): {len(df)} games")
             
             return df
         

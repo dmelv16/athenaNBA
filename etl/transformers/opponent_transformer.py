@@ -1,5 +1,5 @@
 """
-Transformer for opponent stats data
+Transformer for team performance stats data (alternative to opponent stats)
 """
 
 import pandas as pd
@@ -11,12 +11,15 @@ logger = get_logger(__name__)
 
 
 class OpponentStatsTransformer:
-    """Transform opponent stats data for database insertion"""
+    """Transform team performance stats data for database insertion"""
     
+    # Updated column mapping for team performance endpoint
     OPPONENT_STATS_COLUMNS = {
         'player_id': 'player_id',
         'season': 'season',
+        'team_id': 'opponent_team_id',  # May vary based on endpoint response
         'vs_team_id': 'opponent_team_id',
+        'opp_team_id': 'opponent_team_id',
         'gp': 'gp',
         'w': 'w',
         'l': 'l',
@@ -50,7 +53,7 @@ class OpponentStatsTransformer:
         player_id: int
     ) -> Optional[pd.DataFrame]:
         """
-        Transform opponent stats DataFrame
+        Transform team performance stats DataFrame
         
         Args:
             df: Raw DataFrame from NBA API
@@ -65,11 +68,27 @@ class OpponentStatsTransformer:
         df = df.copy()
         df['player_id'] = player_id
         
+        # Try to find the opponent_team_id column (it might have different names)
+        opponent_col = None
+        for col in ['team_id', 'vs_team_id', 'opp_team_id']:
+            if col in df.columns:
+                opponent_col = col
+                break
+        
+        if opponent_col and opponent_col != 'opponent_team_id':
+            df['opponent_team_id'] = df[opponent_col]
+        
         # Select and rename columns
-        available_cols = {
-            k: v for k, v in OpponentStatsTransformer.OPPONENT_STATS_COLUMNS.items()
-            if k in df.columns
-        }
+        available_cols = {}
+        for k, v in OpponentStatsTransformer.OPPONENT_STATS_COLUMNS.items():
+            if k in df.columns:
+                # Only add if we haven't already added this target column
+                if v not in available_cols.values():
+                    available_cols[k] = v
+        
+        if not available_cols:
+            logger.warning("No matching columns found in opponent stats")
+            return None
         
         df_clean = df[list(available_cols.keys())].copy()
         df_clean.columns = list(available_cols.values())

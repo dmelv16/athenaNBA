@@ -40,7 +40,7 @@ class ETLTasks:
         teams = self.static_extractor.get_all_teams()
         self.data_loader.insert_teams(teams)
         
-        logger.info("✓ Static data loaded successfully\n")
+        logger.info("Static data loaded successfully\n")
     
     def load_player_game_logs(
         self,
@@ -95,7 +95,7 @@ class ETLTasks:
                         ['game_id', 'player_id']
                     )
         
-        logger.info(f"\n✓ Player game logs loaded successfully\n")
+        logger.info(f"\nPlayer game logs loaded successfully\n")
     
     def load_player_opponent_stats(
         self,
@@ -149,7 +149,7 @@ class ETLTasks:
                         ['player_id', 'season', 'opponent_team_id']
                     )
         
-        logger.info(f"\n✓ Player opponent stats loaded successfully\n")
+        logger.info(f"\nPlayer opponent stats loaded successfully\n")
     
     def load_player_splits(
         self,
@@ -203,7 +203,7 @@ class ETLTasks:
                         ['player_id', 'season', 'split_type', 'split_value']
                     )
         
-        logger.info(f"\n✓ Player splits loaded successfully\n")
+        logger.info(f"\nPlayer splits loaded successfully\n")
     
     def load_team_game_logs(
         self,
@@ -257,4 +257,4 @@ class ETLTasks:
                         ['game_id', 'team_id']
                     )
         
-        logger.info(f"\n✓ Team game logs loaded successfully\n")
+        logger.info(f"\nTeam game logs loaded successfully\n")

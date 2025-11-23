@@ -202,5 +202,5 @@ class ETLPipeline:
         logger.info(f"Team Success Rate: {team_stats['success_rate']:.2f}%")
         
         logger.info("\n" + "=" * 70)
-        logger.info("✓ Pipeline execution completed")
+        logger.info("Pipeline execution completed")
         logger.info("=" * 70 + "\n")

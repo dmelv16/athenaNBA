@@ -1,0 +1,17 @@
+# NBA ETL Pipeline Dependencies
+
+# Core dependencies
+nba-api>=1.1.14
+pandas>=2.0.0
+psycopg2-binary>=2.9.9
+python-dotenv>=1.0.0
+
+# Optional dependencies
+# For better performance
+numpy>=1.24.0
+
+# For development/testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.0.0
+flake8>=6.0.0

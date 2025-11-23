@@ -215,7 +215,7 @@ class SchemaManager:
             try:
                 with self.db.get_cursor() as cur:
                     cur.execute(create_sql)
-                logger.info(f"✓ Table '{table_name}' created/verified")
+                logger.info(f"Table '{table_name}' created/verified")
             except Exception as e:
                 logger.error(f"✗ Failed to create table '{table_name}': {e}")
                 raise
@@ -230,7 +230,7 @@ class SchemaManager:
             try:
                 with self.db.get_cursor() as cur:
                     cur.execute(index_sql)
-                logger.info(f"✓ Index {idx}/{len(CREATE_INDEXES)} created")
+                logger.info(f"Index {idx}/{len(CREATE_INDEXES)} created")
             except Exception as e:
                 logger.error(f"✗ Failed to create index: {e}")
                 # Don't raise - indexes are not critical
@@ -270,6 +270,6 @@ class SchemaManager:
             try:
                 with self.db.get_cursor() as cur:
                     cur.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
-                logger.info(f"✓ Table '{table}' dropped")
+                logger.info(f"Table '{table}' dropped")
             except Exception as e:
                 logger.error(f"✗ Failed to drop table '{table}': {e}")

@@ -28,7 +28,7 @@ class StaticDataExtractor(BaseExtractor):
         logger.info("Fetching all NBA players...")
         try:
             players_data = players.get_players()
-            logger.info(f"✓ Retrieved {len(players_data)} players")
+            logger.info(f"Retrieved {len(players_data)} players")
             return players_data
         except Exception as e:
             logger.error(f"Failed to fetch players: {e}")
@@ -44,7 +44,7 @@ class StaticDataExtractor(BaseExtractor):
         logger.info("Fetching all NBA teams...")
         try:
             teams_data = teams.get_teams()
-            logger.info(f"✓ Retrieved {len(teams_data)} teams")
+            logger.info(f"Retrieved {len(teams_data)} teams")
             return teams_data
         except Exception as e:
             logger.error(f"Failed to fetch teams: {e}")
@@ -59,7 +59,7 @@ class StaticDataExtractor(BaseExtractor):
         """
         all_players = self.get_all_players()
         active = [p for p in all_players if p.get('is_active', False)]
-        logger.info(f"✓ Filtered to {len(active)} active players")
+        logger.info(f"Filtered to {len(active)} active players")
         return active
     
     def get_player_by_name(self, name: str) -> List[Dict[str, Any]]:
