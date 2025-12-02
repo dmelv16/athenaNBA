@@ -101,15 +101,15 @@ def main():
         extractor = StaticDataExtractor()
         all_players = extractor.get_all_players()
         player_filter = [p['id'] for p in all_players[:5]]
-        logger.info(f"🧪 TEST MODE: Processing only 5 players")
+        logger.info(f" TEST MODE: Processing only 5 players")
     
     if args.players:
         player_filter = [int(pid.strip()) for pid in args.players.split(',')]
-        logger.info(f"📝 Player filter: {len(player_filter)} players")
+        logger.info(f" Player filter: {len(player_filter)} players")
     
     if args.seasons:
         season_filter = [s.strip() for s in args.seasons.split(',')]
-        logger.info(f"📅 Season filter: {season_filter}")
+        logger.info(f" Season filter: {season_filter}")
     
     # Run appropriate pipeline mode
     try:
@@ -135,7 +135,7 @@ def main():
         
         elif args.mode == 'incremental':
             if not args.season:
-                logger.error("❌ --season required for incremental mode")
+                logger.error(" --season required for incremental mode")
                 sys.exit(1)
             pipeline.run_incremental_update(args.season)
         
@@ -143,11 +143,11 @@ def main():
         sys.exit(0)
         
     except KeyboardInterrupt:
-        logger.warning("\n⚠️  Pipeline interrupted by user")
+        logger.warning("\n  Pipeline interrupted by user")
         sys.exit(130)
         
     except Exception as e:
-        logger.error(f"\n❌ Pipeline failed: {e}")
+        logger.error(f"\n Pipeline failed: {e}")
         sys.exit(1)
 
 

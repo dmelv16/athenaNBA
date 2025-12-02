@@ -40,7 +40,7 @@ class ETLTasks:
         teams = self.static_extractor.get_all_teams()
         self.data_loader.insert_teams(teams)
         
-        logger.info("Static data loaded successfully\n")
+        logger.info("✓ Static data loaded successfully\n")
     
     def load_player_game_logs(
         self,
@@ -49,25 +49,32 @@ class ETLTasks:
     ):
         """
         Load player game logs
+        Automatically filters to players who actually played in specified seasons
         
         Args:
-            player_filter: List of player IDs to process (None = all)
+            player_filter: List of player IDs to process (None = auto-detect from seasons)
             season_filter: List of seasons to process (None = all from config)
         """
         logger.info("=" * 70)
         logger.info("Task: Loading Player Game Logs")
         logger.info("=" * 70)
         
-        # Get players and seasons
-        all_players = self.static_extractor.get_all_players()
-        
-        if player_filter:
-            all_players = [p for p in all_players if p['id'] in player_filter]
-        
+        # Get seasons
         seasons = season_filter or self.static_extractor.get_seasons_list(
             ETLConfig.START_SEASON,
             ETLConfig.END_SEASON
         )
+        
+        # Smart player detection: If no filter provided, get only players who played in these seasons
+        if player_filter is None:
+            logger.info("No player filter provided - auto-detecting players from seasons...")
+            all_players = self.static_extractor.get_players_for_seasons(seasons)
+            logger.info(f"Auto-detected {len(all_players)} players who played in specified seasons")
+        else:
+            # Use provided filter
+            all_players_data = self.static_extractor.get_all_players()
+            all_players = [p for p in all_players_data if p['id'] in player_filter]
+            logger.info(f"Using provided filter: {len(all_players)} players")
         
         total_players = len(all_players)
         logger.info(f"Processing {total_players} players across {len(seasons)} seasons\n")
@@ -95,7 +102,7 @@ class ETLTasks:
                         ['game_id', 'player_id']
                     )
         
-        logger.info(f"\nPlayer game logs loaded successfully\n")
+        logger.info(f"\n✓ Player game logs loaded successfully\n")
     
     def load_player_opponent_stats(
         self,
@@ -104,6 +111,7 @@ class ETLTasks:
     ):
         """
         Load player vs opponent statistics
+        Automatically filters to players who actually played in specified seasons
         
         Args:
             player_filter: List of player IDs to process
@@ -113,15 +121,18 @@ class ETLTasks:
         logger.info("Task: Loading Player Opponent Stats")
         logger.info("=" * 70)
         
-        all_players = self.static_extractor.get_all_players()
-        
-        if player_filter:
-            all_players = [p for p in all_players if p['id'] in player_filter]
-        
+        # Get seasons
         seasons = season_filter or self.static_extractor.get_seasons_list(
             ETLConfig.START_SEASON,
             ETLConfig.END_SEASON
         )
+        
+        # Smart player detection
+        if player_filter is None:
+            all_players = self.static_extractor.get_players_for_seasons(seasons)
+        else:
+            all_players_data = self.static_extractor.get_all_players()
+            all_players = [p for p in all_players_data if p['id'] in player_filter]
         
         total_players = len(all_players)
         logger.info(f"Processing {total_players} players across {len(seasons)} seasons\n")
@@ -149,7 +160,7 @@ class ETLTasks:
                         ['player_id', 'season', 'opponent_team_id']
                     )
         
-        logger.info(f"\nPlayer opponent stats loaded successfully\n")
+        logger.info(f"\n✓ Player opponent stats loaded successfully\n")
     
     def load_player_splits(
         self,
@@ -158,6 +169,7 @@ class ETLTasks:
     ):
         """
         Load player general splits
+        Automatically filters to players who actually played in specified seasons
         
         Args:
             player_filter: List of player IDs to process
@@ -167,15 +179,18 @@ class ETLTasks:
         logger.info("Task: Loading Player Splits")
         logger.info("=" * 70)
         
-        all_players = self.static_extractor.get_all_players()
-        
-        if player_filter:
-            all_players = [p for p in all_players if p['id'] in player_filter]
-        
+        # Get seasons
         seasons = season_filter or self.static_extractor.get_seasons_list(
             ETLConfig.START_SEASON,
             ETLConfig.END_SEASON
         )
+        
+        # Smart player detection
+        if player_filter is None:
+            all_players = self.static_extractor.get_players_for_seasons(seasons)
+        else:
+            all_players_data = self.static_extractor.get_all_players()
+            all_players = [p for p in all_players_data if p['id'] in player_filter]
         
         total_players = len(all_players)
         logger.info(f"Processing {total_players} players across {len(seasons)} seasons\n")
@@ -203,7 +218,7 @@ class ETLTasks:
                         ['player_id', 'season', 'split_type', 'split_value']
                     )
         
-        logger.info(f"\nPlayer splits loaded successfully\n")
+        logger.info(f"\n✓ Player splits loaded successfully\n")
     
     def load_team_game_logs(
         self,
@@ -257,4 +272,4 @@ class ETLTasks:
                         ['game_id', 'team_id']
                     )
         
-        logger.info(f"\nTeam game logs loaded successfully\n")
+        logger.info(f"\n✓ Team game logs loaded successfully\n")

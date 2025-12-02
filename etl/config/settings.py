@@ -23,17 +23,19 @@ class DatabaseConfig:
 class ETLConfig:
     """ETL pipeline configuration"""
     # Seasons to collect
-    START_SEASON = os.getenv('START_SEASON', '2014-15')
-    END_SEASON = os.getenv('END_SEASON', '2024-25')
+    START_SEASON = os.getenv('START_SEASON', '2014-15')  # Default to current season only
+    END_SEASON = os.getenv('END_SEASON', '2023-24')
     
-    # Rate limiting for NBA API
-    REQUEST_DELAY = float(os.getenv('REQUEST_DELAY', '0.6'))
-    BATCH_SIZE = int(os.getenv('BATCH_SIZE', '50'))
-    BATCH_DELAY = int(os.getenv('BATCH_DELAY', '30'))
+    # Rate limiting for NBA API - ULTRA-CONSERVATIVE SETTINGS
+    # The NBA API throttles after ~500-600 requests in a rolling window
+    # These settings keep you well under that limit
+    REQUEST_DELAY = float(os.getenv('REQUEST_DELAY', '3.0'))  # 3 seconds between requests
+    BATCH_SIZE = int(os.getenv('BATCH_SIZE', '20'))          # Pause every 20 requests  
+    BATCH_DELAY = int(os.getenv('BATCH_DELAY', '30'))       # 3 minute pause between batches
     
-    # Retry settings
-    MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))
-    RETRY_DELAY = int(os.getenv('RETRY_DELAY', '5'))
+    # Retry settings - More attempts with exponential backoff
+    MAX_RETRIES = int(os.getenv('MAX_RETRIES', '5'))         # Try 5 times
+    RETRY_DELAY = int(os.getenv('RETRY_DELAY', '20'))        # 20 seconds base (becomes 20, 40, 80, 160s)
     
     # Processing settings
     ENABLE_PARALLEL = os.getenv('ENABLE_PARALLEL', 'False').lower() == 'true'

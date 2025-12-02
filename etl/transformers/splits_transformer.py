@@ -63,24 +63,41 @@ class SplitsTransformer:
         if df is None or df.empty:
             return None
         
-        df = df.copy()
-        df['player_id'] = player_id
-        
-        # Extract split value from group_value column if exists
-        if 'group_value' in df.columns:
-            df['split_value'] = df['group_value']
-        elif 'group_set' in df.columns:
-            df['split_value'] = df['group_set']
-        else:
-            df['split_value'] = 'general'
-        
-        # Select and rename columns
-        available_cols = {
-            k: v for k, v in SplitsTransformer.SPLITS_COLUMNS.items()
-            if k in df.columns
-        }
-        
-        df_clean = df[list(available_cols.keys())].copy()
-        df_clean.columns = list(available_cols.values())
-        
-        return df_clean
+        try:
+            df = df.copy()
+            df['player_id'] = player_id
+            
+            # Extract split value from group_value column if exists
+            if 'group_value' in df.columns:
+                df['split_value'] = df['group_value']
+            elif 'group_set' in df.columns:
+                df['split_value'] = df['group_set']
+            else:
+                df['split_value'] = 'general'
+            
+            # Handle any date columns with mixed format
+            date_columns = [col for col in df.columns if 'date' in col.lower()]
+            for date_col in date_columns:
+                try:
+                    df[date_col] = pd.to_datetime(df[date_col], format='mixed', errors='coerce')
+                except Exception as e:
+                    logger.warning(f"Could not parse date column {date_col}: {e}")
+            
+            # Select and rename columns
+            available_cols = {
+                k: v for k, v in SplitsTransformer.SPLITS_COLUMNS.items()
+                if k in df.columns
+            }
+            
+            if not available_cols:
+                logger.warning("No matching columns found in splits data")
+                return None
+            
+            df_clean = df[list(available_cols.keys())].copy()
+            df_clean.columns = list(available_cols.values())
+            
+            return df_clean
+            
+        except Exception as e:
+            logger.error(f"Error transforming splits for player {player_id}: {e}")
+            return None

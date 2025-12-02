@@ -4,6 +4,7 @@ Logging utility for NBA ETL Pipeline
 
 import logging
 import os
+import sys
 from pathlib import Path
 from config.settings import LogConfig
 
@@ -36,14 +37,17 @@ def setup_logger(name: str = __name__) -> logging.Logger:
         datefmt=LogConfig.DATE_FORMAT
     )
     
-    # Console handler
-    console_handler = logging.StreamHandler()
+    # Console handler with UTF-8 encoding for Windows
+    console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
+    # Set UTF-8 encoding to handle emoji/unicode characters
+    if hasattr(console_handler.stream, 'reconfigure'):
+        console_handler.stream.reconfigure(encoding='utf-8')
     logger.addHandler(console_handler)
     
-    # File handler
-    file_handler = logging.FileHandler(LogConfig.FILE)
+    # File handler with UTF-8 encoding
+    file_handler = logging.FileHandler(LogConfig.FILE, encoding='utf-8')
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)

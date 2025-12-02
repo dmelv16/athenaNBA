@@ -39,7 +39,7 @@ class BaseExtractor(ABC):
         **kwargs
     ) -> Optional[Any]:
         """
-        Execute extraction with retry logic
+        Execute extraction with retry logic and exponential backoff
         
         Args:
             extract_func: Function to execute
@@ -61,13 +61,27 @@ class BaseExtractor(ABC):
                 
             except Exception as e:
                 self.error_count += 1
+                error_msg = str(e)
+                
+                # Check if it's a timeout or rate limit error
+                is_timeout = 'timed out' in error_msg.lower() or 'timeout' in error_msg.lower()
+                is_rate_limit = 'rate' in error_msg.lower() or '429' in error_msg
                 
                 if attempt < max_retries:
-                    logger.warning(
-                        f"Attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
-                        f"Retrying in {ETLConfig.RETRY_DELAY}s..."
-                    )
-                    time.sleep(ETLConfig.RETRY_DELAY)
+                    # Exponential backoff for timeouts/rate limits
+                    if is_timeout or is_rate_limit:
+                        backoff_time = ETLConfig.RETRY_DELAY * (2 ** attempt)  # 5s, 10s, 20s, 40s
+                        logger.warning(
+                            f"Attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
+                            f"Backing off for {backoff_time}s..."
+                        )
+                        time.sleep(backoff_time)
+                    else:
+                        logger.warning(
+                            f"Attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
+                            f"Retrying in {ETLConfig.RETRY_DELAY}s..."
+                        )
+                        time.sleep(ETLConfig.RETRY_DELAY)
                 else:
                     logger.error(
                         f"All {max_retries + 1} attempts failed for {extract_func.__name__}: {e}"

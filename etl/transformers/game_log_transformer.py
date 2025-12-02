@@ -97,7 +97,9 @@ class GameLogTransformer:
         
         # Data type conversions and cleaning
         if 'game_date' in df_clean.columns:
-            df_clean['game_date'] = pd.to_datetime(df_clean['game_date'])
+            # Use 'mixed' format to handle different date formats from NBA API
+            # The API sometimes returns "Apr 21, 2021" and sometimes "April 21, 2021"
+            df_clean['game_date'] = pd.to_datetime(df_clean['game_date'], format='mixed', errors='coerce')
         
         # Convert minutes from string format (e.g., "32:15") to decimal
         if 'min' in df_clean.columns:
@@ -130,7 +132,8 @@ class GameLogTransformer:
         
         # Data type conversions
         if 'game_date' in df_clean.columns:
-            df_clean['game_date'] = pd.to_datetime(df_clean['game_date'])
+            # Use 'mixed' format to handle different date formats
+            df_clean['game_date'] = pd.to_datetime(df_clean['game_date'], format='mixed', errors='coerce')
         
         return df_clean
     
