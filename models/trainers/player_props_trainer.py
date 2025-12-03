@@ -1,5 +1,5 @@
 """
-Model training for player prop predictions
+Model training for player prop predictions - with FAST prediction mode
 """
 
 import pandas as pd
@@ -33,24 +33,57 @@ class TrainedPlayerModel:
         self.feature_cols = feature_cols
         self.metrics = metrics
         self.trained_at = trained_at or datetime.now()
+        
+        # Precompute base confidence from metrics
+        self._base_confidence = min(0.75, max(0.5, self.metrics.directional_accuracy))
     
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         """Make predictions"""
         X_clean = X[self.feature_cols].fillna(0)
         return self.model.predict(X_clean)
     
-    def predict_with_confidence(self, X: pd.DataFrame) -> List[Prediction]:
-        """Make predictions with confidence intervals"""
+    def predict_fast(self, X: pd.DataFrame) -> List[Prediction]:
+        """
+        FAST prediction without tree variance calculation.
+        Uses precomputed base confidence from training metrics.
+        ~10x faster than predict_with_confidence
+        """
+        X_clean = X[self.feature_cols].fillna(0)
+        preds = self.model.predict(X_clean)
+        
+        results = []
+        for pred in preds:
+            results.append(Prediction(
+                pred_value=float(pred),
+                confidence=self._base_confidence,
+                lower_bound=float(pred - 1.5 * self.metrics.mae),
+                upper_bound=float(pred + 1.5 * self.metrics.mae),
+                features_used=len(self.feature_cols),
+                model_name=f"player_{self.target}"
+            ))
+        
+        return results
+    
+    def predict_with_confidence(self, X: pd.DataFrame, fast_mode: bool = True) -> List[Prediction]:
+        """
+        Make predictions with confidence intervals.
+        Set fast_mode=False for full tree variance calculation (slower but more accurate confidence)
+        """
+        if fast_mode:
+            return self.predict_fast(X)
+        
         X_clean = X[self.feature_cols].fillna(0)
         
         # Get point prediction
         preds = self.model.predict(X_clean)
         
-        # Estimate confidence using tree variance
-        # XGBoost can give us individual tree predictions
+        # Estimate confidence using tree variance (SLOW)
         all_tree_preds = []
-        for i in range(self.model.n_estimators):
-            tree_pred = self.model.predict(X_clean, iteration_range=(0, i+1))
+        n_trees = min(self.model.n_estimators, 50)  # Cap at 50 trees for speed
+        step = max(1, self.model.n_estimators // n_trees)
+        
+        for i in range(step, self.model.n_estimators + 1, step):
+            tree_pred = self.model.predict(X_clean, iteration_range=(0, i))
             all_tree_preds.append(tree_pred)
         
         tree_preds = np.array(all_tree_preds)
@@ -58,23 +91,30 @@ class TrainedPlayerModel:
         
         results = []
         for i in range(len(preds)):
-            # Use MAE to estimate confidence
             std = pred_std[i] if i < len(pred_std) else self.metrics.mae
-            
-            # Confidence based on prediction stability
             confidence = 1 / (1 + std / (abs(preds[i]) + 1))
             confidence = np.clip(confidence, 0.3, 0.9)
             
             results.append(Prediction(
-                pred_value=preds[i],
-                confidence=confidence,
-                lower_bound=preds[i] - 1.5 * self.metrics.mae,
-                upper_bound=preds[i] + 1.5 * self.metrics.mae,
+                pred_value=float(preds[i]),
+                confidence=float(confidence),
+                lower_bound=float(preds[i] - 1.5 * self.metrics.mae),
+                upper_bound=float(preds[i] + 1.5 * self.metrics.mae),
                 features_used=len(self.feature_cols),
                 model_name=f"player_{self.target}"
             ))
         
         return results
+    
+    def predict_batch(self, X: pd.DataFrame) -> Tuple[np.ndarray, float, float, float]:
+        """
+        Ultra-fast batch prediction returning raw arrays.
+        Returns: (predictions, confidence, lower_mult, upper_mult)
+        Caller handles conversion to Prediction objects
+        """
+        X_clean = X[self.feature_cols].fillna(0)
+        preds = self.model.predict(X_clean)
+        return preds, self._base_confidence, self.metrics.mae * 1.5, self.metrics.mae * 1.5
     
     def save(self, path: str = None):
         """Save model to disk"""
@@ -104,18 +144,7 @@ class PlayerPropsTrainer:
         params: Dict = None,
         verbose: bool = True
     ) -> TrainedPlayerModel:
-        """
-        Train XGBoost model for a specific stat
-        
-        Args:
-            target: Target stat to predict
-            test_ratio: Ratio of data to use for testing
-            params: XGBoost parameters (uses config defaults if None)
-            verbose: Whether to print progress
-            
-        Returns:
-            TrainedPlayerModel instance
-        """
+        """Train XGBoost model for a specific stat"""
         if verbose:
             print(f"\n{'='*50}")
             print(f"Training model for: {target.upper()}")
@@ -203,7 +232,6 @@ class PlayerPropsTrainer:
             mape = 0
         
         # Directional accuracy (if we had lines, this would be over/under accuracy)
-        # Using median as proxy line
         median_val = y_train.median()
         actual_over = y_test > median_val
         pred_over = test_preds > median_val
@@ -330,7 +358,8 @@ class PlayerPropsTrainer:
         self,
         target: str,
         features_df: pd.DataFrame,
-        with_confidence: bool = True
+        with_confidence: bool = True,
+        fast_mode: bool = True
     ):
         """Make predictions for a target stat"""
         if target not in self.models:
@@ -339,5 +368,5 @@ class PlayerPropsTrainer:
         model = self.models[target]
         
         if with_confidence:
-            return model.predict_with_confidence(features_df)
+            return model.predict_with_confidence(features_df, fast_mode=fast_mode)
         return model.predict(features_df)

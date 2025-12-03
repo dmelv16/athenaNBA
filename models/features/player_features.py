@@ -1,6 +1,8 @@
 """
 Feature engineering for player prop predictions - OPTIMIZED VERSION
 Uses precomputation, caching, and vectorized operations for speed
+
+BACKFILL COMPATIBLE: Does not filter by games_this_season so historical predictions work
 """
 
 import pandas as pd
@@ -21,11 +23,13 @@ class PlayerFeatureEngineer:
         team_game_logs: pd.DataFrame,
         players_df: Optional[pd.DataFrame] = None,
         teams_df: Optional[pd.DataFrame] = None,
-        use_cache: bool = True
+        use_cache: bool = True,
+        min_games_for_prediction: int = 3  # Minimum games before we can predict (lowered for backfill)
     ):
         self.players = players_df
         self.teams = teams_df
         self.use_cache = use_cache
+        self.min_games_for_prediction = min_games_for_prediction
         
         # Prepare data once
         self.player_logs = self._prepare_player_logs(player_game_logs)
@@ -44,7 +48,7 @@ class PlayerFeatureEngineer:
     
     def _get_data_hash(self) -> str:
         """Generate hash of data for cache validation"""
-        hash_str = f"{len(self.player_logs)}_{self.player_logs['game_date'].max()}"
+        hash_str = f"{len(self.player_logs)}_{self.player_logs['game_date'].max()}_{self.min_games_for_prediction}"
         return hashlib.md5(hash_str.encode()).hexdigest()[:8]
     
     def _get_cache_path(self) -> Path:
@@ -151,11 +155,11 @@ class PlayerFeatureEngineer:
             shifted = grouped[col].shift(1)
             
             for window in windows:
-                # Rolling calculations on shifted data
-                rolling = shifted.groupby(df['player_id']).rolling(window, min_periods=2)
+                # Rolling calculations on shifted data - use min_periods=1 for early games
+                rolling = shifted.groupby(df['player_id']).rolling(window, min_periods=1)
                 
                 new_cols[f'{col}_avg_{window}'] = rolling.mean().reset_index(level=0, drop=True)
-                new_cols[f'{col}_std_{window}'] = shifted.groupby(df['player_id']).rolling(window, min_periods=3).std().reset_index(level=0, drop=True)
+                new_cols[f'{col}_std_{window}'] = shifted.groupby(df['player_id']).rolling(window, min_periods=2).std().reset_index(level=0, drop=True)
                 new_cols[f'{col}_max_{window}'] = rolling.max().reset_index(level=0, drop=True)
                 new_cols[f'{col}_min_{window}'] = rolling.min().reset_index(level=0, drop=True)
             
@@ -164,8 +168,11 @@ class PlayerFeatureEngineer:
                 lambda x: x.shift(1).expanding(min_periods=1).mean()
             ).reset_index(level=0, drop=True)
         
-        # Games this season
+        # Games this season (cumcount starts at 0, so game 1 = 0, game 2 = 1, etc.)
         new_cols['games_this_season'] = df.groupby(['player_id', 'season']).cumcount()
+        
+        # Career games (total games for this player)
+        new_cols['career_games'] = grouped.cumcount()
         
         # =====================================================
         # TREND FEATURES
@@ -233,10 +240,10 @@ class PlayerFeatureEngineer:
         if 'min' in df.columns:
             min_shifted = grouped['min'].shift(1)
             new_cols['min_trend'] = (
-                min_shifted.groupby(df['player_id']).rolling(3).mean().reset_index(level=0, drop=True) -
-                min_shifted.groupby(df['player_id']).rolling(10).mean().reset_index(level=0, drop=True)
+                min_shifted.groupby(df['player_id']).rolling(3, min_periods=1).mean().reset_index(level=0, drop=True) -
+                min_shifted.groupby(df['player_id']).rolling(10, min_periods=1).mean().reset_index(level=0, drop=True)
             )
-            new_cols['min_stability'] = min_shifted.groupby(df['player_id']).rolling(5).std().reset_index(level=0, drop=True)
+            new_cols['min_stability'] = min_shifted.groupby(df['player_id']).rolling(5, min_periods=2).std().reset_index(level=0, drop=True)
             
             # Per-minute rates for main stats
             min_safe = df['min'].clip(lower=1)
@@ -245,7 +252,7 @@ class PlayerFeatureEngineer:
                     per_min = df[stat] / min_safe
                     new_cols[f'{stat}_per_min_avg_5'] = (
                         per_min.groupby(df['player_id']).shift(1)
-                        .groupby(df['player_id']).rolling(5, min_periods=2).mean()
+                        .groupby(df['player_id']).rolling(5, min_periods=1).mean()
                         .reset_index(level=0, drop=True)
                     )
         
@@ -254,7 +261,7 @@ class PlayerFeatureEngineer:
             fga_rate = df['fga'] / df['min'].clip(lower=1) * 36
             new_cols['fga_rate_avg_5'] = (
                 fga_rate.groupby(df['player_id']).shift(1)
-                .groupby(df['player_id']).rolling(5, min_periods=2).mean()
+                .groupby(df['player_id']).rolling(5, min_periods=1).mean()
                 .reset_index(level=0, drop=True)
             )
         
@@ -263,7 +270,7 @@ class PlayerFeatureEngineer:
             tsa = df['fga'] + 0.44 * df['fta']
             new_cols['tsa_avg_5'] = (
                 tsa.groupby(df['player_id']).shift(1)
-                .groupby(df['player_id']).rolling(5, min_periods=2).mean()
+                .groupby(df['player_id']).rolling(5, min_periods=1).mean()
                 .reset_index(level=0, drop=True)
             )
         
@@ -272,7 +279,7 @@ class PlayerFeatureEngineer:
             ast_to_tov = df['ast'] / df['tov'].clip(lower=0.5)
             new_cols['ast_to_tov_avg_5'] = (
                 ast_to_tov.groupby(df['player_id']).shift(1)
-                .groupby(df['player_id']).rolling(5, min_periods=2).mean()
+                .groupby(df['player_id']).rolling(5, min_periods=1).mean()
                 .reset_index(level=0, drop=True)
             )
         
@@ -298,7 +305,7 @@ class PlayerFeatureEngineer:
             if stat in df.columns:
                 new_cols[f'{stat}_vs_opp_avg'] = (
                     df.groupby(['player_id', 'opponent_team_id'])[stat]
-                    .apply(lambda x: x.shift(1).expanding().mean())
+                    .apply(lambda x: x.shift(1).expanding(min_periods=1).mean())
                     .reset_index(level=[0,1], drop=True)
                 )
         
@@ -318,8 +325,12 @@ class PlayerFeatureEngineer:
         # Remove duplicates and clean
         feature_df = feature_df.loc[:, ~feature_df.columns.duplicated()]
         
-        # Filter to players with enough games
-        feature_df = feature_df[feature_df['games_this_season'] >= FEATURE_CONFIG.min_games_required]
+        # =====================================================
+        # FILTER: Only require min_games_for_prediction (default 3)
+        # This is MUCH more permissive than before for backfill compatibility
+        # =====================================================
+        # Use career_games instead of games_this_season so cross-season works
+        feature_df = feature_df[feature_df['career_games'] >= self.min_games_for_prediction]
         
         # Convert numpy types for database compatibility
         feature_df = self._convert_types_for_db(feature_df)
@@ -353,7 +364,7 @@ class PlayerFeatureEngineer:
                 col_name = f'team_{stat}_avg_{window}'
                 stats_dict[col_name] = (
                     df.groupby('team_id')[stat]
-                    .apply(lambda x: x.shift(1).rolling(window, min_periods=max(2, window//2)).mean().iloc[-1] if len(x) > 0 else np.nan)
+                    .apply(lambda x: x.shift(1).rolling(window, min_periods=1).mean().iloc[-1] if len(x) > 0 else np.nan)
                 )
         
         return pd.DataFrame(stats_dict)
@@ -470,6 +481,7 @@ class PlayerFeatureEngineer:
         return {
             'player_id': player_id,
             'games_this_season': features.get('games_this_season', 0),
+            'career_games': features.get('career_games', 0),
             'pts_avg_5': features.get('pts_avg_5'),
             'pts_avg_10': features.get('pts_avg_10'),
             'reb_avg_5': features.get('reb_avg_5'),

@@ -10,11 +10,29 @@ from typing import List, Dict, Optional, Any
 import json
 import sys
 from pathlib import Path
+import numpy as np
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from etl.config.settings import DatabaseConfig
+
+
+def convert_numpy_types(value):
+    """Convert numpy types to native Python types for PostgreSQL compatibility"""
+    if value is None:
+        return None
+    if isinstance(value, (np.float32, np.float64, np.floating)):
+        return float(value)
+    if isinstance(value, (np.int8, np.int16, np.int32, np.int64, np.integer)):
+        return int(value)
+    if isinstance(value, np.bool_):
+        return bool(value)
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if hasattr(value, 'item'):  # Generic numpy scalar
+        return value.item()
+    return value
 
 
 class NBAPredictionUploader:
@@ -140,17 +158,7 @@ class NBAPredictionUploader:
         prediction_date: date = None,
         model_version: str = "v1.0"
     ) -> int:
-        """
-        Upload player prop predictions
-        
-        Args:
-            predictions: List of prediction dictionaries
-            prediction_date: Date predictions are for
-            model_version: Model version string
-            
-        Returns:
-            Number of predictions uploaded
-        """
+        """Upload player prop predictions with numpy type conversion"""
         if not predictions:
             return 0
         
@@ -182,18 +190,18 @@ class NBAPredictionUploader:
                 prediction_date,
                 p.get('game_id'),
                 p.get('game_date'),
-                p.get('player_id'),
+                convert_numpy_types(p.get('player_id')),
                 p.get('player_name'),
                 p.get('team_abbrev'),
                 p.get('opponent_abbrev'),
-                p.get('is_home'),
+                convert_numpy_types(p.get('is_home')),
                 p.get('prop_type'),
-                p.get('predicted_value'),
-                p.get('confidence'),
-                p.get('lower_bound'),
-                p.get('upper_bound'),
-                p.get('line'),
-                p.get('edge'),
+                convert_numpy_types(p.get('predicted_value')),
+                convert_numpy_types(p.get('confidence')),
+                convert_numpy_types(p.get('lower_bound')),
+                convert_numpy_types(p.get('upper_bound')),
+                convert_numpy_types(p.get('line')),
+                convert_numpy_types(p.get('edge')),
                 p.get('recommended_bet'),
                 model_version
             ))
@@ -202,7 +210,6 @@ class NBAPredictionUploader:
             execute_values(cur, query, values)
             self.conn.commit()
         
-        print(f"✓ Uploaded {len(values)} player predictions")
         return len(values)
     
     def upload_team_predictions(
@@ -211,7 +218,7 @@ class NBAPredictionUploader:
         prediction_date: date = None,
         model_version: str = "v1.0"
     ) -> int:
-        """Upload team prop predictions (spread, total)"""
+        """Upload team prop predictions with numpy type conversion"""
         if not predictions:
             return 0
         
@@ -243,17 +250,17 @@ class NBAPredictionUploader:
                 prediction_date,
                 p.get('game_id'),
                 p.get('game_date'),
-                p.get('home_team_id'),
+                convert_numpy_types(p.get('home_team_id')),
                 p.get('home_team_abbrev'),
-                p.get('away_team_id'),
+                convert_numpy_types(p.get('away_team_id')),
                 p.get('away_team_abbrev'),
                 p.get('prop_type'),
-                p.get('predicted_value'),
-                p.get('confidence'),
-                p.get('lower_bound'),
-                p.get('upper_bound'),
-                p.get('line'),
-                p.get('edge'),
+                convert_numpy_types(p.get('predicted_value')),
+                convert_numpy_types(p.get('confidence')),
+                convert_numpy_types(p.get('lower_bound')),
+                convert_numpy_types(p.get('upper_bound')),
+                convert_numpy_types(p.get('line')),
+                convert_numpy_types(p.get('edge')),
                 p.get('recommended_bet'),
                 model_version
             ))
@@ -262,7 +269,6 @@ class NBAPredictionUploader:
             execute_values(cur, query, values)
             self.conn.commit()
         
-        print(f"✓ Uploaded {len(values)} team predictions")
         return len(values)
     
     def upload_parlays(
@@ -270,7 +276,7 @@ class NBAPredictionUploader:
         parlays: List[Dict],
         prediction_date: date = None
     ) -> int:
-        """Upload parlay recommendations"""
+        """Upload parlay recommendations with numpy type conversion"""
         if not parlays:
             return 0
         
@@ -289,47 +295,43 @@ class NBAPredictionUploader:
             values.append((
                 prediction_date,
                 p.get('parlay_type'),
-                p.get('num_legs'),
+                convert_numpy_types(p.get('num_legs')),
                 Json(p.get('legs', [])),
-                p.get('combined_odds'),
-                p.get('american_odds'),
-                p.get('avg_confidence'),
-                p.get('min_confidence'),
-                p.get('avg_edge'),
-                p.get('expected_value'),
-                p.get('score')
+                convert_numpy_types(p.get('combined_odds')),
+                convert_numpy_types(p.get('american_odds')),
+                convert_numpy_types(p.get('avg_confidence')),
+                convert_numpy_types(p.get('min_confidence')),
+                convert_numpy_types(p.get('avg_edge')),
+                convert_numpy_types(p.get('expected_value')),
+                convert_numpy_types(p.get('score'))
             ))
         
         with self.conn.cursor() as cur:
             execute_values(cur, query, values)
             self.conn.commit()
         
-        print(f"✓ Uploaded {len(values)} parlays")
         return len(values)
     
     # ==========================================
-    # Retrieval Methods
+    # Retrieval Methods (unchanged)
     # ==========================================
     
     def get_todays_predictions(self) -> Dict:
         """Get all predictions for today"""
         today = date.today()
         
-        # Get player predictions
         player_query = """
             SELECT * FROM nba_player_predictions
             WHERE prediction_date = %s
             ORDER BY confidence DESC
         """
         
-        # Get team predictions
         team_query = """
             SELECT * FROM nba_team_predictions
             WHERE prediction_date = %s
             ORDER BY game_id
         """
         
-        # Get parlays
         parlay_query = """
             SELECT * FROM nba_parlay_predictions
             WHERE prediction_date = %s
@@ -337,30 +339,25 @@ class NBAPredictionUploader:
         """
         
         with self.conn.cursor() as cur:
-            # Player predictions
             cur.execute(player_query, (today,))
             columns = [desc[0] for desc in cur.description]
             player_preds = [dict(zip(columns, row)) for row in cur.fetchall()]
             
-            # Team predictions
             cur.execute(team_query, (today,))
             columns = [desc[0] for desc in cur.description]
             team_preds = [dict(zip(columns, row)) for row in cur.fetchall()]
             
-            # Parlays
             cur.execute(parlay_query, (today,))
             columns = [desc[0] for desc in cur.description]
             parlays = [dict(zip(columns, row)) for row in cur.fetchall()]
         
-        # Convert dates to strings for JSON serialization
         for p in player_preds + team_preds + parlays:
             for key, value in p.items():
                 if isinstance(value, (date, datetime)):
                     p[key] = str(value)
-                elif hasattr(value, 'item'):  # numpy/decimal types
+                elif hasattr(value, 'item'):
                     p[key] = float(value)
         
-        # Group player predictions by game
         games = {}
         for pred in player_preds:
             game_id = pred['game_id']
@@ -373,7 +370,6 @@ class NBAPredictionUploader:
                 }
             games[game_id]['player_predictions'].append(pred)
         
-        # Add team predictions to games
         for pred in team_preds:
             game_id = pred['game_id']
             if game_id not in games:
@@ -420,7 +416,6 @@ class NBAPredictionUploader:
             columns = [desc[0] for desc in cur.description]
             team_preds = [dict(zip(columns, row)) for row in cur.fetchall()]
         
-        # Convert types
         for p in player_preds + team_preds:
             for key, value in p.items():
                 if isinstance(value, (date, datetime)):
@@ -434,11 +429,7 @@ class NBAPredictionUploader:
             'team_predictions': team_preds
         }
     
-    def get_recent_predictions(
-        self,
-        days: int = 7,
-        today_only: bool = False
-    ) -> List[Dict]:
+    def get_recent_predictions(self, days: int = 7, today_only: bool = False) -> List[Dict]:
         """Get recent predictions"""
         if today_only:
             query = """

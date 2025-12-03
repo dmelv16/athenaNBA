@@ -1,19 +1,15 @@
 """
-Backfill NBA Predictions
-Generate predictions for historical games using database game logs
-
-Usage:
-    python -m models.api.backfill_predictions --start 2024-10-22 --end 2025-12-01
-    python -m models.api.backfill_predictions --days 30
+Backfill NBA Predictions - DEBUG VERSION
 """
 
 import argparse
 import sys
 from datetime import datetime, date, timedelta
 from pathlib import Path
-from typing import List, Dict, Set, Tuple
+from typing import List, Dict, Tuple, Optional
 import time
 import pandas as pd
+import numpy as np
 
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
@@ -24,433 +20,388 @@ from models.features.player_features import PlayerFeatureEngineer
 from models.features.team_features import TeamFeatureEngineer
 from models.trainers.player_props_trainer import PlayerPropsTrainer
 from models.trainers.team_props_trainer import TeamPropsTrainer
-from models.predictors.game_predictor import GamePredictor, GameInfo, PlayerInfo
-from models.predictors.parlay_builder import ParlayBuilder
 from models.api.db_uploader import NBAPredictionUploader
-from models.config import FEATURE_CONFIG
 
 
-class HistoricalPredictionRunner:
-    """Generate predictions using historical data from database"""
+class OptimizedPredictionRunner:
+    
+    PLAYER_PROPS = ['pts', 'reb', 'ast', 'pra', 'pr', 'pa', 'ra']
     
     def __init__(self):
         self.db = get_db_connection()
-        self.data_loader = None
         self.player_fe = None
         self.team_fe = None
         self.player_trainer = None
         self.team_trainer = None
-        self.predictor = None
-        self.parlay_builder = None
         self.uploader = None
         
-        # Caches
-        self.team_id_to_abbrev: Dict[int, str] = {}
-        self.abbrev_to_team_id: Dict[str, int] = {}
-        self.players_with_data: Set[int] = set()
+        self.team_id_to_abbrev = {}
+        self.abbrev_to_team_id = {}
+        self.player_id_to_name = {}
+        
+        self.player_game_logs_df = None
+        self.games_by_date = {}
+        
+        self.all_player_features = None
+        self.feature_cols_by_prop = {}
+        self.player_feature_index = {}
     
     def initialize(self):
-        """Load data and models"""
         print("\n" + "=" * 60)
-        print("INITIALIZING HISTORICAL PREDICTION SYSTEM")
+        print("INITIALIZING")
         print("=" * 60)
         
-        # Load data
-        print("\n📊 Loading data from database...")
-        self.data_loader = NBADataLoader(min_date='2023-01-01')
-        player_logs, team_logs, players, teams_df = self.data_loader.load_all_data()
+        print("\n📊 Loading data...")
+        data_loader = NBADataLoader(min_date='2023-01-01')
+        player_logs, team_logs, players_df, teams_df = data_loader.load_all_data()
         print(f"  Player logs: {len(player_logs):,}")
         print(f"  Team logs: {len(team_logs):,}")
         
-        # Build caches
-        self.players_with_data = set(player_logs['player_id'].unique())
-        print(f"  Players with data: {len(self.players_with_data)}")
+        self.player_game_logs_df = player_logs.copy()
+        self.player_id_to_name = dict(zip(players_df['player_id'], players_df['full_name']))
         
-        # Team mappings
-        for _, row in teams_df.iterrows():
-            self.team_id_to_abbrev[row['team_id']] = row['abbreviation']
-            self.abbrev_to_team_id[row['abbreviation']] = row['team_id']
+        self.team_id_to_abbrev = dict(zip(teams_df['team_id'], teams_df['abbreviation']))
+        self.abbrev_to_team_id = {v: k for k, v in self.team_id_to_abbrev.items()}
         
-        # Initialize feature engineers
-        print("\n🔧 Initializing feature engineers...")
-        self.player_fe = PlayerFeatureEngineer(player_logs, team_logs, players, teams_df)
+        print("  Indexing games by date...")
+        team_logs['game_date'] = pd.to_datetime(team_logs['game_date']).dt.date
+        for game_date, group in team_logs.groupby('game_date'):
+            self.games_by_date[game_date] = group
+        print(f"  Indexed {len(self.games_by_date)} dates")
+        
+        self.player_game_logs_df['game_date'] = pd.to_datetime(
+            self.player_game_logs_df['game_date']
+        ).dt.date
+        
+        print("\n🔧 Building features...")
+        self.player_fe = PlayerFeatureEngineer(player_logs, team_logs, players_df, teams_df)
         self.team_fe = TeamFeatureEngineer(team_logs, teams_df)
         
-        # Load trained models
-        print("\n🤖 Loading trained models...")
+        print("  Storing full feature cache...")
+        self.all_player_features = self.player_fe._feature_cache.copy()
+        self.all_player_features['game_date'] = pd.to_datetime(
+            self.all_player_features['game_date']
+        ).dt.date
+        print(f"  Feature rows: {len(self.all_player_features):,}")
+        
+        min_date = self.all_player_features['game_date'].min()
+        max_date = self.all_player_features['game_date'].max()
+        print(f"  📅 Feature date range: {min_date} to {max_date}")
+        
+        print("  Building player feature index...")
+        for idx, row in self.all_player_features.iterrows():
+            player_id = row['player_id']
+            game_date = row['game_date']
+            if player_id not in self.player_feature_index:
+                self.player_feature_index[player_id] = []
+            self.player_feature_index[player_id].append((game_date, idx))
+        
+        for player_id in self.player_feature_index:
+            self.player_feature_index[player_id].sort(key=lambda x: x[0])
+        print(f"  Indexed {len(self.player_feature_index)} players")
+        
+        print("\n🤖 Loading models...")
         self.player_trainer = PlayerPropsTrainer(self.player_fe)
         self.team_trainer = TeamPropsTrainer(self.team_fe)
         
         try:
             self.player_trainer.load_all_models()
             self.team_trainer.load_all_models()
-            print("  ✓ Models loaded successfully")
-            
-            # Show what models we have
-            print(f"\n  Player prop models: {list(self.player_trainer.models.keys())}")
-            print(f"  Team prop models: {list(self.team_trainer.models.keys())}")
-            
+            print(f"  Player models: {list(self.player_trainer.models.keys())}")
+            print(f"  Team models: {list(self.team_trainer.models.keys())}")
         except Exception as e:
-            print(f"  ✗ Error loading models: {e}")
-            print("  → Training new models...")
+            print(f"  Training new models: {e}")
             self.player_trainer.train_all_models(verbose=False)
             self.team_trainer.train_all_models(verbose=False)
             self.player_trainer.save_all_models()
             self.team_trainer.save_all_models()
         
-        # Initialize predictor
-        self.predictor = GamePredictor(
-            self.player_fe, self.team_fe,
-            self.player_trainer, self.team_trainer
-        )
+        for prop in self.PLAYER_PROPS:
+            if prop in self.player_trainer.models:
+                self.feature_cols_by_prop[prop] = self.player_trainer.models[prop].feature_cols
         
-        # Initialize parlay builder
-        self.parlay_builder = ParlayBuilder()
-        
-        # Initialize database uploader
-        print("\n💾 Connecting to prediction database...")
         self.uploader = NBAPredictionUploader()
         self.uploader.init_schema()
         
-        print("\n✓ Initialization complete!")
+        data_loader.close()
+        print(f"\n✓ Initialization complete")
     
-    def get_games_for_date(self, target_date: date) -> List[Dict]:
-        """
-        Get games from team_game_logs for a specific date
-        Returns unique games with home/away teams identified
-        """
-        query = """
-            SELECT DISTINCT 
-                game_id,
-                game_date,
-                team_id,
-                matchup,
-                pts,
-                wl
-            FROM team_game_logs
-            WHERE game_date = %s
-            ORDER BY game_id, team_id
-        """
+    def get_games_for_date(self, target_date):
+        if target_date not in self.games_by_date:
+            return []
         
-        with self.db.get_cursor() as cur:
-            cur.execute(query, (target_date,))
-            columns = [desc[0] for desc in cur.description]
-            results = [dict(zip(columns, row)) for row in cur.fetchall()]
+        df = self.games_by_date[target_date]
+        games_dict = {}
         
-        # Group by game_id to pair home/away teams
-        games_dict: Dict[str, Dict] = {}
-        
-        for row in results:
+        for _, row in df.iterrows():
             game_id = row['game_id']
             matchup = row['matchup'] or ''
-            
-            # Determine if home or away from matchup string
             is_home = ' vs. ' in matchup
+            team_abbrev = self.team_id_to_abbrev.get(row['team_id'], 'UNK')
             
             if game_id not in games_dict:
                 games_dict[game_id] = {
                     'game_id': game_id,
-                    'game_date': row['game_date'],
-                    'home_team_id': None,
-                    'away_team_id': None,
-                    'home_team_abbrev': None,
-                    'away_team_abbrev': None,
-                    'home_pts': None,
-                    'away_pts': None
+                    'game_date': target_date,
+                    'home_team_id': None, 'away_team_id': None,
+                    'home_team_abbrev': None, 'away_team_abbrev': None,
                 }
-            
-            team_abbrev = self.team_id_to_abbrev.get(row['team_id'], 'UNK')
             
             if is_home:
                 games_dict[game_id]['home_team_id'] = row['team_id']
                 games_dict[game_id]['home_team_abbrev'] = team_abbrev
-                games_dict[game_id]['home_pts'] = row['pts']
             else:
                 games_dict[game_id]['away_team_id'] = row['team_id']
                 games_dict[game_id]['away_team_abbrev'] = team_abbrev
-                games_dict[game_id]['away_pts'] = row['pts']
         
-        # Filter to complete games only
-        games = [g for g in games_dict.values() 
-                 if g['home_team_id'] and g['away_team_id']]
-        
-        return games
+        return [g for g in games_dict.values() if g['home_team_id'] and g['away_team_id']]
     
-    def get_players_for_game(self, game: Dict) -> List[PlayerInfo]:
-        """
-        Get players who played in this game from player_game_logs
-        """
-        query = """
-            SELECT DISTINCT player_id, matchup
-            FROM player_game_logs
-            WHERE game_id = %s
-        """
+    def get_player_features_for_date(self, player_id, game_date):
+        if player_id not in self.player_feature_index:
+            return None
         
-        with self.db.get_cursor() as cur:
-            cur.execute(query, (game['game_id'],))
-            results = cur.fetchall()
+        games = self.player_feature_index[player_id]
+        
+        left, right = 0, len(games) - 1
+        result_idx = None
+        
+        while left <= right:
+            mid = (left + right) // 2
+            if games[mid][0] < game_date:
+                result_idx = games[mid][1]
+                left = mid + 1
+            else:
+                right = mid - 1
+        
+        if result_idx is None:
+            return None
+        
+        return self.all_player_features.loc[result_idx]
+    
+    def get_players_for_game(self, game_id, game, game_date, debug=False):
+        mask = self.player_game_logs_df['game_id'] == game_id
+        game_players = self.player_game_logs_df.loc[mask, ['player_id', 'matchup']].drop_duplicates()
+        
+        if debug:
+            print(f"\n    DEBUG: game_id={game_id}, game_date={game_date}")
+            print(f"    DEBUG: Found {len(game_players)} players in game logs")
         
         players = []
+        not_in_index = 0
+        no_games_before = 0
         
-        for player_id, matchup in results:
-            if player_id not in self.players_with_data:
+        for _, row in game_players.iterrows():
+            player_id = row['player_id']
+            
+            if player_id not in self.player_feature_index:
+                not_in_index += 1
                 continue
             
-            # Get player name
-            player_query = "SELECT full_name FROM players WHERE player_id = %s"
-            with self.db.get_cursor() as cur:
-                cur.execute(player_query, (player_id,))
-                result = cur.fetchone()
-                player_name = result[0] if result else f"Player {player_id}"
+            features = self.get_player_features_for_date(player_id, game_date)
+            if features is None:
+                no_games_before += 1
+                continue
             
-            # Determine team from matchup
-            matchup = matchup or ''
+            matchup = row['matchup'] or ''
             is_home = ' vs. ' in matchup
             
-            if is_home:
-                team_id = game['home_team_id']
-                team_abbrev = game['home_team_abbrev']
-                opponent_abbrev = game['away_team_abbrev']
-            else:
-                team_id = game['away_team_id']
-                team_abbrev = game['away_team_abbrev']
-                opponent_abbrev = game['home_team_abbrev']
-            
-            players.append(PlayerInfo(
-                player_id=player_id,
-                player_name=player_name,
-                team_id=team_id,
-                team_abbrev=team_abbrev,
-                opponent_abbrev=opponent_abbrev,
-                is_home=is_home,
-                rest_days=2,
-                lines=None
-            ))
+            players.append({
+                'player_id': player_id,
+                'player_name': self.player_id_to_name.get(player_id, f"Player {player_id}"),
+                'team_abbrev': game['home_team_abbrev'] if is_home else game['away_team_abbrev'],
+                'opponent_abbrev': game['away_team_abbrev'] if is_home else game['home_team_abbrev'],
+                'is_home': is_home,
+                'features': features,
+            })
+        
+        if debug:
+            print(f"    DEBUG: {len(players)} with features, {not_in_index} not in index, {no_games_before} no history")
         
         return players
     
-    def generate_predictions(self, target_date: date) -> Dict:
-        """Generate all predictions for a date using DB data"""
+    def predict_player_batch(self, players, game, target_date, debug=False):
+        predictions = []
         
-        # Get games from database
+        if debug and players:
+            print(f"    DEBUG predict_player_batch: {len(players)} players")
+        
+        for player in players:
+            player_id = player['player_id']
+            features = player['features']
+            
+            for prop in self.PLAYER_PROPS:
+                if prop not in self.player_trainer.models:
+                    continue
+                
+                try:
+                    model = self.player_trainer.models[prop]
+                    feature_cols = self.feature_cols_by_prop.get(prop, model.feature_cols)
+                    
+                    if debug and player == players[0] and prop == 'pts':
+                        print(f"    DEBUG: features type = {type(features)}")
+                        print(f"    DEBUG: feature_cols count = {len(feature_cols)}")
+                        missing = [c for c in feature_cols if c not in features.index]
+                        if missing:
+                            print(f"    DEBUG: MISSING {len(missing)} cols: {missing[:5]}...")
+                    
+                    feature_vals = pd.DataFrame([features])[feature_cols].fillna(0)
+                    preds = model.model.predict(feature_vals)
+                    pred_value = float(preds[0])
+                    
+                    predictions.append({
+                        'game_id': game['game_id'],
+                        'game_date': target_date,
+                        'player_id': int(player_id),
+                        'player_name': player['player_name'],
+                        'team_abbrev': player['team_abbrev'],
+                        'opponent_abbrev': player['opponent_abbrev'],
+                        'is_home': player['is_home'],
+                        'prop_type': prop,
+                        'predicted_value': pred_value,
+                        'confidence': float(model._base_confidence),
+                        'lower_bound': pred_value - 1.5 * model.metrics.mae,
+                        'upper_bound': pred_value + 1.5 * model.metrics.mae,
+                        'line': None,
+                        'edge': None,
+                        'recommended_bet': None
+                    })
+                except Exception as e:
+                    if debug:
+                        print(f"    DEBUG ERROR: {prop} for {player['player_name']}: {e}")
+                    continue
+        
+        if debug:
+            print(f"    DEBUG: Generated {len(predictions)} total predictions")
+        
+        return predictions
+    
+    def predict_team_props(self, game, target_date):
+        predictions = []
+        
+        features = self.team_fe.prepare_game_prediction(
+            home_team_id=game['home_team_id'],
+            away_team_id=game['away_team_id'],
+            game_date=pd.Timestamp(target_date)
+        )
+        
+        if features is None:
+            return predictions
+        
+        for prop in ['spread', 'total_pts']:
+            if prop not in self.team_trainer.models:
+                continue
+            
+            try:
+                model = self.team_trainer.models[prop]
+                pred_results = model.predict_with_confidence(features)
+                
+                if pred_results:
+                    pred = pred_results[0]
+                    prop_name = 'total' if prop == 'total_pts' else prop
+                    
+                    predictions.append({
+                        'game_id': game['game_id'],
+                        'game_date': target_date,
+                        'home_team_id': int(game['home_team_id']),
+                        'home_team_abbrev': game['home_team_abbrev'],
+                        'away_team_id': int(game['away_team_id']),
+                        'away_team_abbrev': game['away_team_abbrev'],
+                        'prop_type': prop_name,
+                        'predicted_value': float(pred.pred_value),
+                        'confidence': float(pred.confidence),
+                        'lower_bound': float(pred.lower_bound),
+                        'upper_bound': float(pred.upper_bound),
+                        'line': None,
+                        'edge': None,
+                        'recommended_bet': None
+                    })
+            except:
+                continue
+        
+        return predictions
+    
+    def process_date(self, target_date, debug=False):
         games = self.get_games_for_date(target_date)
         
         if not games:
-            return {'games': [], 'player_predictions': [], 'team_predictions': [], 'parlays': []}
+            return 0, 0, 0
         
-        all_player_predictions = []
-        all_team_predictions = []
-        all_prop_predictions = []
+        all_player_preds = []
+        all_team_preds = []
         
-        for game in games:
-            print(f"\n  🏀 {game['away_team_abbrev']} @ {game['home_team_abbrev']}")
+        for idx, game in enumerate(games):
+            team_preds = self.predict_team_props(game, target_date)
+            all_team_preds.extend(team_preds)
             
-            # Create GameInfo
-            game_info = GameInfo(
-                game_id=game['game_id'],
-                game_date=datetime.combine(game['game_date'], datetime.min.time()),
-                home_team_id=game['home_team_id'],
-                home_team_name=game['home_team_abbrev'],
-                home_team_abbrev=game['home_team_abbrev'],
-                away_team_id=game['away_team_id'],
-                away_team_name=game['away_team_abbrev'],
-                away_team_abbrev=game['away_team_abbrev']
-            )
+            do_debug = debug and (idx == 0)
+            players = self.get_players_for_game(game['game_id'], game, target_date, debug=do_debug)
+            player_preds = self.predict_player_batch(players, game, target_date, debug=do_debug)
+            all_player_preds.extend(player_preds)
             
-            # Team predictions (spread + total)
-            try:
-                team_preds = self.predictor.predict_team_props(game_info)
-                
-                for pred in team_preds:
-                    pred_dict = {
-                        'game_id': game['game_id'],
-                        'game_date': target_date,
-                        'home_team_id': game['home_team_id'],
-                        'home_team_abbrev': game['home_team_abbrev'],
-                        'away_team_id': game['away_team_id'],
-                        'away_team_abbrev': game['away_team_abbrev'],
-                        'prop_type': pred.prop_type,
-                        'predicted_value': pred.prediction.pred_value,
-                        'confidence': pred.prediction.confidence,
-                        'lower_bound': pred.prediction.lower_bound,
-                        'upper_bound': pred.prediction.upper_bound,
-                        'line': pred.line,
-                        'edge': pred.edge,
-                        'recommended_bet': pred.recommended_bet
-                    }
-                    all_team_predictions.append(pred_dict)
-                    all_prop_predictions.append(pred)
-                
-                print(f"    Team props: {len(team_preds)} predictions")
-            except Exception as e:
-                print(f"    ⚠️ Team prediction error: {e}")
-            
-            # Player predictions
-            players = self.get_players_for_game(game)
-            player_count = 0
-            
-            for player in players:
-                try:
-                    player_preds = self.predictor.predict_player_props(player, game_info)
-                    
-                    for pred in player_preds:
-                        # Skip low-accuracy props
-                        if pred.prop_type in ['stl', 'blk']:
-                            continue
-                        
-                        pred_dict = {
-                            'game_id': game['game_id'],
-                            'game_date': target_date,
-                            'player_id': player.player_id,
-                            'player_name': player.player_name,
-                            'team_abbrev': player.team_abbrev,
-                            'opponent_abbrev': player.opponent_abbrev,
-                            'is_home': player.is_home,
-                            'prop_type': pred.prop_type,
-                            'predicted_value': pred.prediction.pred_value,
-                            'confidence': pred.prediction.confidence,
-                            'lower_bound': pred.prediction.lower_bound,
-                            'upper_bound': pred.prediction.upper_bound,
-                            'line': pred.line,
-                            'edge': pred.edge,
-                            'recommended_bet': pred.recommended_bet
-                        }
-                        all_player_predictions.append(pred_dict)
-                        all_prop_predictions.append(pred)
-                    
-                    if player_preds:
-                        player_count += 1
-                        
-                except Exception:
-                    continue
-            
-            print(f"    Player props: {player_count} players predicted")
+            print(f"    {game['away_team_abbrev']}@{game['home_team_abbrev']}: "
+                  f"{len(player_preds)} player, {len(team_preds)} team")
         
-        # Build parlays
-        parlay_dicts = []
-        if all_prop_predictions:
-            try:
-                daily_parlays = self.parlay_builder.build_daily_parlays(
-                    all_prop_predictions,
-                    num_standard=5,
-                    num_sgp_per_game=2,
-                    risk_level='moderate'
-                )
-                
-                for candidate in daily_parlays.get('standard', []):
-                    parlay_dicts.append(candidate.parlay.to_dict())
-                    parlay_dicts[-1]['score'] = candidate.score
-                    parlay_dicts[-1]['parlay_type'] = 'standard'
-                
-                for game_id, sgps in daily_parlays.get('same_game', {}).items():
-                    for candidate in sgps:
-                        parlay_dict = candidate.parlay.to_dict()
-                        parlay_dict['score'] = candidate.score
-                        parlay_dict['parlay_type'] = 'same_game'
-                        parlay_dict['game_id'] = game_id
-                        parlay_dicts.append(parlay_dict)
-            except Exception as e:
-                print(f"    ⚠️ Parlay building error: {e}")
+        p_count = self.uploader.upload_player_predictions(all_player_preds, target_date)
+        t_count = self.uploader.upload_team_predictions(all_team_preds, target_date)
         
-        return {
-            'games': games,
-            'player_predictions': all_player_predictions,
-            'team_predictions': all_team_predictions,
-            'parlays': parlay_dicts
-        }
+        return p_count, t_count, 0
     
-    def upload_predictions(self, predictions: Dict, target_date: date):
-        """Upload predictions to database"""
-        player_count = self.uploader.upload_player_predictions(
-            predictions['player_predictions'],
-            prediction_date=target_date
-        )
-        
-        team_count = self.uploader.upload_team_predictions(
-            predictions['team_predictions'],
-            prediction_date=target_date
-        )
-        
-        parlay_count = self.uploader.upload_parlays(
-            predictions['parlays'],
-            prediction_date=target_date
-        )
-        
-        return player_count, team_count, parlay_count
+    def check_existing(self, target_date):
+        existing = self.uploader.get_predictions_by_date(target_date)
+        return bool(existing.get('player_predictions'))
     
     def close(self):
-        """Cleanup connections"""
         if self.uploader:
             self.uploader.close()
-        if self.data_loader:
-            self.data_loader.close()
         if self.db:
             self.db.close()
 
 
-def backfill_predictions(
-    start_date: date,
-    end_date: date,
-    skip_existing: bool = True
-):
-    """
-    Generate predictions for a date range using database game logs
-    """
+def backfill_predictions(start_date, end_date, skip_existing=True, debug=False):
     print("\n" + "=" * 60)
-    print("🏀 NBA PREDICTION BACKFILL (DATABASE-BASED)")
+    print("🏀 NBA PREDICTION BACKFILL")
     print("=" * 60)
-    print(f"Start Date: {start_date}")
-    print(f"End Date: {end_date}")
+    print(f"Date Range: {start_date} to {end_date}")
+    print(f"Debug: {debug}")
     
     total_days = (end_date - start_date).days
-    print(f"Total Days: {total_days}")
     
-    # Initialize runner once
-    runner = HistoricalPredictionRunner()
+    runner = OptimizedPredictionRunner()
     runner.initialize()
     
-    # Track stats
     processed = 0
     skipped = 0
     errors = 0
-    total_player_preds = 0
-    total_team_preds = 0
-    total_parlays = 0
+    total_player = 0
+    total_team = 0
     
+    start_time = time.time()
     current_date = start_date
     
     while current_date < end_date:
-        print(f"\n{'='*60}")
-        print(f"📅 Processing: {current_date} ({processed + skipped + errors + 1}/{total_days})")
-        print(f"{'='*60}")
+        day_num = processed + skipped + errors + 1
+        print(f"\n📅 {current_date} ({day_num}/{total_days})")
         
         try:
-            # Check if predictions already exist
-            if skip_existing:
-                existing = runner.uploader.get_predictions_by_date(current_date)
-                if existing.get('player_predictions'):
-                    print(f"  ⏭️ Skipping - {len(existing['player_predictions'])} predictions exist")
-                    skipped += 1
-                    current_date += timedelta(days=1)
-                    continue
-            
-            # Generate predictions
-            predictions = runner.generate_predictions(current_date)
-            
-            if predictions['player_predictions'] or predictions['team_predictions']:
-                # Upload to database
-                p_count, t_count, par_count = runner.upload_predictions(predictions, current_date)
-                
-                total_player_preds += p_count
-                total_team_preds += t_count
-                total_parlays += par_count
-                processed += 1
-                
-                print(f"\n  ✓ Uploaded: {p_count} player, {t_count} team, {par_count} parlays")
-            else:
-                print(f"  ⚠️ No games found in database for this date")
+            if skip_existing and runner.check_existing(current_date):
+                print("  ⏭️ Exists, skipping")
                 skipped += 1
+                current_date += timedelta(days=1)
+                continue
             
+            day_start = time.time()
+            p, t, _ = runner.process_date(current_date, debug=debug)
+            day_time = time.time() - day_start
+            
+            if p or t:
+                total_player += p
+                total_team += t
+                processed += 1
+                print(f"  ✓ {p} player, {t} team ({day_time:.1f}s)")
+            else:
+                print("  ⚠️ No predictions")
+                skipped += 1
+                
         except Exception as e:
             print(f"  ✗ Error: {e}")
             import traceback
@@ -459,47 +410,27 @@ def backfill_predictions(
         
         current_date += timedelta(days=1)
     
-    # Summary
+    elapsed = time.time() - start_time
     print("\n" + "=" * 60)
-    print("BACKFILL COMPLETE")
+    print("COMPLETE")
     print("=" * 60)
-    print(f"Days Processed: {processed}")
-    print(f"Days Skipped: {skipped}")
-    print(f"Errors: {errors}")
-    print(f"\nTotal Predictions:")
-    print(f"  Player props: {total_player_preds}")
-    print(f"  Team props: {total_team_preds}")
-    print(f"  Parlays: {total_parlays}")
-    print("=" * 60)
+    print(f"Processed: {processed} | Skipped: {skipped} | Errors: {errors}")
+    print(f"Predictions: {total_player} player, {total_team} team")
+    print(f"Time: {elapsed/60:.1f}min")
     
     runner.close()
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='Backfill NBA Predictions (Database-Based)',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-    # Backfill from season start to yesterday
-    python -m models.api.backfill_predictions --start 2024-10-22 --end 2025-12-02
-    
-    # Backfill last 30 days
-    python -m models.api.backfill_predictions --days 30
-    
-    # Backfill specific range, overwrite existing
-    python -m models.api.backfill_predictions --start 2024-11-01 --end 2024-11-15 --overwrite
-        """
-    )
-    
-    parser.add_argument('--start', type=str, help='Start date (YYYY-MM-DD)')
-    parser.add_argument('--end', type=str, help='End date (YYYY-MM-DD). Defaults to today.')
-    parser.add_argument('--days', type=int, help='Number of days to backfill (alternative to --start/--end)')
-    parser.add_argument('--overwrite', action='store_true', help='Overwrite existing predictions')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--start', type=str)
+    parser.add_argument('--end', type=str)
+    parser.add_argument('--days', type=int)
+    parser.add_argument('--overwrite', action='store_true')
+    parser.add_argument('--debug', action='store_true')
     
     args = parser.parse_args()
     
-    # Determine date range
     if args.days:
         end_date = date.today()
         start_date = end_date - timedelta(days=args.days)
@@ -507,17 +438,10 @@ Examples:
         start_date = datetime.strptime(args.start, '%Y-%m-%d').date()
         end_date = datetime.strptime(args.end, '%Y-%m-%d').date() if args.end else date.today()
     else:
-        print("Error: Must specify either --start or --days")
+        print("Error: Specify --start or --days")
         sys.exit(1)
     
-    if start_date >= end_date:
-        print(f"Error: Start date ({start_date}) must be before end date ({end_date})")
-        sys.exit(1)
-    
-    if end_date > date.today():
-        end_date = date.today()
-    
-    backfill_predictions(start_date, end_date, skip_existing=not args.overwrite)
+    backfill_predictions(start_date, end_date, skip_existing=not args.overwrite, debug=args.debug)
 
 
 if __name__ == "__main__":
