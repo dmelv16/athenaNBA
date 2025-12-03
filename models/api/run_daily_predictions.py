@@ -14,11 +14,10 @@ from pathlib import Path
 from typing import List, Dict, Optional
 import pandas as pd
 
-# Add project root to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from nba_api.stats.endpoints import scoreboardv2
+from nba_api.stats.endpoints import scoreboardv2, commonteamroster
 from nba_api.stats.static import teams as nba_teams
 import time
 
@@ -33,6 +32,86 @@ from models.api.db_uploader import NBAPredictionUploader
 from models.config import PATH_CONFIG, PARLAY_CONFIG
 
 
+class RosterFetcher:
+    """Fetches current team rosters from NBA API"""
+    
+    def __init__(self):
+        self.roster_cache: Dict[int, List[Dict]] = {}
+        self.request_count = 0
+    
+    def _rate_limit(self):
+        """Apply rate limiting"""
+        self.request_count += 1
+        time.sleep(0.6)
+        if self.request_count % 10 == 0:
+            time.sleep(2)
+    
+    def get_team_roster(self, team_id: int, season: str = None) -> List[Dict]:
+        """
+        Get current roster for a team
+        
+        Args:
+            team_id: NBA team ID
+            season: Season string (e.g., '2024-25'). Defaults to current.
+            
+        Returns:
+            List of player dictionaries with id, name, position, etc.
+        """
+        if team_id in self.roster_cache:
+            return self.roster_cache[team_id]
+        
+        if season is None:
+            now = datetime.now()
+            year = now.year if now.month >= 10 else now.year - 1
+            season = f"{year}-{str(year + 1)[-2:]}"
+        
+        try:
+            self._rate_limit()
+            
+            roster = commonteamroster.CommonTeamRoster(
+                team_id=team_id,
+                season=season
+            )
+            
+            roster_df = roster.get_data_frames()[0]  # CommonTeamRoster dataset
+            
+            players = []
+            for _, row in roster_df.iterrows():
+                players.append({
+                    'player_id': row['PLAYER_ID'],
+                    'player_name': row['PLAYER'],
+                    'position': row.get('POSITION', ''),
+                    'height': row.get('HEIGHT', ''),
+                    'weight': row.get('WEIGHT', ''),
+                    'age': row.get('AGE', ''),
+                    'experience': row.get('EXP', ''),
+                    'number': row.get('NUM', '')
+                })
+            
+            self.roster_cache[team_id] = players
+            return players
+            
+        except Exception as e:
+            print(f"  ⚠️ Error fetching roster for team {team_id}: {e}")
+            return []
+    
+    def get_game_rosters(self, home_team_id: int, away_team_id: int, season: str = None) -> Dict[str, List[Dict]]:
+        """
+        Get rosters for both teams in a game
+        
+        Returns:
+            Dictionary with 'home' and 'away' roster lists
+        """
+        return {
+            'home': self.get_team_roster(home_team_id, season),
+            'away': self.get_team_roster(away_team_id, season)
+        }
+    
+    def clear_cache(self):
+        """Clear roster cache"""
+        self.roster_cache = {}
+
+
 class DailyPredictionRunner:
     """Orchestrates daily prediction generation"""
     
@@ -45,10 +124,14 @@ class DailyPredictionRunner:
         self.predictor = None
         self.parlay_builder = None
         self.uploader = None
+        self.roster_fetcher = None
         
         # Team mappings
         self.team_id_to_abbrev = {}
         self.abbrev_to_team_id = {}
+        
+        # Players we have data for (from our database)
+        self.players_with_data: set = set()
     
     def initialize(self):
         """Load data and models"""
@@ -62,6 +145,10 @@ class DailyPredictionRunner:
         player_logs, team_logs, players, teams_df = self.data_loader.load_all_data()
         print(f"  Player logs: {len(player_logs):,}")
         print(f"  Team logs: {len(team_logs):,}")
+        
+        # Build set of players we have data for
+        self.players_with_data = set(player_logs['player_id'].unique())
+        print(f"  Players with historical data: {len(self.players_with_data)}")
         
         # Build team mappings
         self._build_team_mappings(teams_df)
@@ -97,6 +184,9 @@ class DailyPredictionRunner:
         # Initialize parlay builder
         self.parlay_builder = ParlayBuilder()
         
+        # Initialize roster fetcher
+        self.roster_fetcher = RosterFetcher()
+        
         # Initialize database uploader
         print("\n💾 Connecting to prediction database...")
         self.uploader = NBAPredictionUploader()
@@ -117,13 +207,13 @@ class DailyPredictionRunner:
         print(f"\n📅 Fetching games for {target_date}...")
         
         try:
-            time.sleep(1)  # Rate limiting
+            time.sleep(1)
             scoreboard = scoreboardv2.ScoreboardV2(
                 game_date=target_date.strftime('%Y-%m-%d'),
                 league_id='00'
             )
             
-            games_df = scoreboard.get_data_frames()[0]  # GameHeader
+            games_df = scoreboard.get_data_frames()[0]
             
             if games_df.empty:
                 print("  No games found for this date")
@@ -152,42 +242,69 @@ class DailyPredictionRunner:
             print(f"  ✗ Error fetching games: {e}")
             return []
     
-    def get_players_for_game(self, game: Dict) -> List[PlayerInfo]:
-        """Get active players for a game"""
+    def get_players_for_game(self, game: Dict, season: str = None) -> List[PlayerInfo]:
+        """
+        Get players for a game using current roster data
+        Only includes players we have historical data for
+        """
         players = []
         
-        # Get players from both teams
-        for team_id, is_home in [(game['home_team_id'], True), (game['away_team_id'], False)]:
-            team_abbrev = self.team_id_to_abbrev.get(team_id, 'UNK')
-            opponent_abbrev = game['away_team_abbrev'] if is_home else game['home_team_abbrev']
+        # Fetch rosters for both teams
+        print(f"  📋 Fetching rosters...")
+        rosters = self.roster_fetcher.get_game_rosters(
+            game['home_team_id'],
+            game['away_team_id'],
+            season
+        )
+        
+        home_roster = rosters['home']
+        away_roster = rosters['away']
+        
+        print(f"    Home ({game['home_team_abbrev']}): {len(home_roster)} players")
+        print(f"    Away ({game['away_team_abbrev']}): {len(away_roster)} players")
+        
+        # Process home team roster
+        predictable_home = 0
+        for player in home_roster:
+            player_id = player['player_id']
             
-            # Get active players for this team from our database
-            query = """
-                SELECT DISTINCT p.player_id, p.full_name
-                FROM players p
-                JOIN player_game_logs pgl ON p.player_id = pgl.player_id
-                WHERE p.is_active = true
-                  AND pgl.matchup LIKE %s
-                  AND pgl.game_date >= %s
-                ORDER BY p.full_name
-            """
+            # Only include players we have data for
+            if player_id not in self.players_with_data:
+                continue
             
-            # Look for recent games with this team abbreviation
-            with self.data_loader.db.get_cursor() as cur:
-                cur.execute(query, (f"%{team_abbrev}%", date.today() - timedelta(days=60)))
-                team_players = cur.fetchall()
+            players.append(PlayerInfo(
+                player_id=player_id,
+                player_name=player['player_name'],
+                team_id=game['home_team_id'],
+                team_abbrev=game['home_team_abbrev'],
+                opponent_abbrev=game['away_team_abbrev'],
+                is_home=True,
+                rest_days=2,
+                lines=None
+            ))
+            predictable_home += 1
+        
+        # Process away team roster
+        predictable_away = 0
+        for player in away_roster:
+            player_id = player['player_id']
             
-            for player_id, player_name in team_players:
-                players.append(PlayerInfo(
-                    player_id=player_id,
-                    player_name=player_name,
-                    team_id=team_id,
-                    team_abbrev=team_abbrev,
-                    opponent_abbrev=opponent_abbrev,
-                    is_home=is_home,
-                    rest_days=2,  # Default - could fetch actual rest days
-                    lines=None  # No lines by default - could integrate odds API
-                ))
+            if player_id not in self.players_with_data:
+                continue
+            
+            players.append(PlayerInfo(
+                player_id=player_id,
+                player_name=player['player_name'],
+                team_id=game['away_team_id'],
+                team_abbrev=game['away_team_abbrev'],
+                opponent_abbrev=game['home_team_abbrev'],
+                is_home=False,
+                rest_days=2,
+                lines=None
+            ))
+            predictable_away += 1
+        
+        print(f"    Predictable: {predictable_home} home, {predictable_away} away")
         
         return players
     
@@ -195,8 +312,13 @@ class DailyPredictionRunner:
         """Generate all predictions for target date"""
         target_date = target_date or date.today()
         
+        # Determine season string
+        year = target_date.year if target_date.month >= 10 else target_date.year - 1
+        season = f"{year}-{str(year + 1)[-2:]}"
+        
         print("\n" + "=" * 60)
         print(f"GENERATING PREDICTIONS FOR {target_date}")
+        print(f"Season: {season}")
         print("=" * 60)
         
         # Fetch games
@@ -207,7 +329,7 @@ class DailyPredictionRunner:
         
         all_player_predictions = []
         all_team_predictions = []
-        all_prop_predictions = []  # For parlay builder
+        all_prop_predictions = []
         
         for game in games:
             print(f"\n🏀 {game['away_team_abbrev']} @ {game['home_team_abbrev']}")
@@ -251,10 +373,9 @@ class DailyPredictionRunner:
                 print(f"    {pred.prop_type}: {pred.prediction.pred_value:.1f} "
                       f"[{pred.prediction.confidence:.0%}]")
             
-            # Player predictions
+            # Get players from current roster
             print("  👤 Player predictions...")
-            players = self.get_players_for_game(game)
-            print(f"    Found {len(players)} players")
+            players = self.get_players_for_game(game, season)
             
             player_count = 0
             for player in players:
@@ -262,7 +383,6 @@ class DailyPredictionRunner:
                     player_preds = self.predictor.predict_player_props(player, game_info)
                     
                     for pred in player_preds:
-                        # Skip low-accuracy props
                         if pred.prop_type in ['stl', 'blk']:
                             continue
                         
@@ -290,7 +410,6 @@ class DailyPredictionRunner:
                         player_count += 1
                         
                 except Exception as e:
-                    # Skip players we can't predict
                     continue
             
             print(f"    Generated predictions for {player_count} players")
@@ -304,7 +423,6 @@ class DailyPredictionRunner:
             risk_level='moderate'
         )
         
-        # Convert parlays to dict format
         parlay_dicts = []
         for candidate in daily_parlays.get('standard', []):
             parlay_dicts.append(candidate.parlay.to_dict())
@@ -336,19 +454,16 @@ class DailyPredictionRunner:
         print("UPLOADING PREDICTIONS TO DATABASE")
         print("=" * 60)
         
-        # Upload player predictions
         player_count = self.uploader.upload_player_predictions(
             predictions['player_predictions'],
             prediction_date=target_date
         )
         
-        # Upload team predictions
         team_count = self.uploader.upload_team_predictions(
             predictions['team_predictions'],
             prediction_date=target_date
         )
         
-        # Upload parlays
         parlay_count = self.uploader.upload_parlays(
             predictions['parlays'],
             prediction_date=target_date
@@ -369,17 +484,13 @@ class DailyPredictionRunner:
         print(f"Date: {target_date}")
         print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
-        # Initialize
         self.initialize()
         
-        # Generate predictions
         predictions = self.generate_predictions(target_date)
         
         if predictions['player_predictions'] or predictions['team_predictions']:
-            # Upload to database
             self.upload_predictions(predictions, target_date)
             
-            # Summary
             print("\n" + "=" * 60)
             print("SUMMARY")
             print("=" * 60)
@@ -388,11 +499,10 @@ class DailyPredictionRunner:
             print(f"Team predictions: {len(predictions['team_predictions'])}")
             print(f"Parlays: {len(predictions['parlays'])}")
         else:
-            print("\n⚠️  No predictions generated (no games or insufficient data)")
+            print("\n⚠️ No predictions generated (no games or insufficient data)")
         
         print("\n✅ Done!")
         
-        # Cleanup
         if self.uploader:
             self.uploader.close()
         if self.data_loader:
