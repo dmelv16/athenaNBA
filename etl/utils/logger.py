@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from config.settings import LogConfig
+from etl.config.settings import LogConfig
 
 
 def setup_logger(name: str = __name__) -> logging.Logger:

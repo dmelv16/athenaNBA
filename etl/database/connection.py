@@ -7,8 +7,8 @@ from psycopg2.extensions import connection as PGConnection
 from typing import Optional
 from contextlib import contextmanager
 
-from config.settings import DatabaseConfig
-from utils.logger import get_logger
+from etl.config.settings import DatabaseConfig
+from etl.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
