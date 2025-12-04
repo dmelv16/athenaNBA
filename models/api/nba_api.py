@@ -374,7 +374,9 @@ if __name__ == '__main__':
         print("    GET /api/nhl/health")
     
     print("\n" + "=" * 60)
-    print("🌐 Server running on http://localhost:5000")
+    print("🌐 Server running on http://localhost:5001")
     print("=" * 60 + "\n")
-    
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    print("\n📋 Registered routes:")
+    for rule in app.url_map.iter_rules():
+        print(f"  {rule.rule} -> {rule.endpoint}")
+    app.run(debug=True, host='0.0.0.0', port=5001)

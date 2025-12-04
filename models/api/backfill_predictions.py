@@ -248,6 +248,13 @@ class OptimizedPredictionRunner:
                     preds = model.model.predict(feature_vals)
                     pred_value = float(preds[0])
                     
+                    # FIX: Handle models saved before _base_confidence was added
+                    if hasattr(model, '_base_confidence'):
+                        confidence = float(model._base_confidence)
+                    else:
+                        # Fallback: compute from metrics (same formula as in __init__)
+                        confidence = float(min(0.75, max(0.5, model.metrics.directional_accuracy)))
+                    
                     predictions.append({
                         'game_id': game['game_id'],
                         'game_date': target_date,
@@ -258,7 +265,7 @@ class OptimizedPredictionRunner:
                         'is_home': player['is_home'],
                         'prop_type': prop,
                         'predicted_value': pred_value,
-                        'confidence': float(model._base_confidence),
+                        'confidence': confidence,
                         'lower_bound': pred_value - 1.5 * model.metrics.mae,
                         'upper_bound': pred_value + 1.5 * model.metrics.mae,
                         'line': None,
@@ -333,13 +340,13 @@ class OptimizedPredictionRunner:
             team_preds = self.predict_team_props(game, target_date)
             all_team_preds.extend(team_preds)
             
-            do_debug = debug and (idx == 0)
+            do_debug = debug and (idx == 0)  # Only debug first game
             players = self.get_players_for_game(game['game_id'], game, target_date, debug=do_debug)
             player_preds = self.predict_player_batch(players, game, target_date, debug=do_debug)
             all_player_preds.extend(player_preds)
             
             print(f"    {game['away_team_abbrev']}@{game['home_team_abbrev']}: "
-                  f"{len(player_preds)} player, {len(team_preds)} team")
+                f"{len(player_preds)} player, {len(team_preds)} team")
         
         p_count = self.uploader.upload_player_predictions(all_player_preds, target_date)
         t_count = self.uploader.upload_team_predictions(all_team_preds, target_date)

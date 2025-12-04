@@ -37,6 +37,13 @@ class TrainedPlayerModel:
         # Precompute base confidence from metrics
         self._base_confidence = min(0.75, max(0.5, self.metrics.directional_accuracy))
     
+    def __setstate__(self, state):
+        """Handle loading older model versions that lack newer attributes"""
+        self.__dict__.update(state)
+        # Add _base_confidence if missing (for backwards compatibility with old saved models)
+        if '_base_confidence' not in state:
+            self._base_confidence = min(0.75, max(0.5, self.metrics.directional_accuracy))
+    
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         """Make predictions"""
         X_clean = X[self.feature_cols].fillna(0)
