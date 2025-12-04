@@ -108,21 +108,21 @@ class OddsPAPIClient:
         'Detroit Pistons': 'DET', 'Washington Wizards': 'WAS',
     }
     
-    def __init__(self, api_key: str, preferred_bookmaker: str = 'pinnacle'):
+    def __init__(self, api_key: str, preferred_bookmaker: str = 'bet365'):  # Changed from pinnacle
         """
         Initialize OddsPAPI client
         
         Args:
             api_key: Your OddsPAPI API key
-            preferred_bookmaker: Bookmaker slug (pinnacle, bet365, etc.)
+            preferred_bookmaker: Bookmaker slug (bet365, pinnacle, etc.)
         """
         self.api_key = api_key
         self.preferred_bookmaker = preferred_bookmaker
         self.session = requests.Session()
         self.session.headers.update({
-            'Authorization': f'Bearer {api_key}',
             'Content-Type': 'application/json',
             'Accept': 'application/json'
+            # Removed: 'Authorization': f'Bearer {api_key}'
         })
         self.request_count = 0
         self._last_request_time = 0
@@ -148,6 +148,11 @@ class OddsPAPIClient:
         self._rate_limit(cooldown_ms)
         
         url = f"{self.BASE_URL}{endpoint}"
+        
+        # ADD THESE LINES - API key as query parameter
+        if params is None:
+            params = {}
+        params['apiKey'] = self.api_key
         
         try:
             response = self.session.get(url, params=params, timeout=30)
