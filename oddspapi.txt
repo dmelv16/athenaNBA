@@ -1,1250 +1,4857 @@
-GET sports
+Getting Data in Batches
 
-Allows users to retrieve a list of sports available in the system.
-Endpoint
+This following information only applies to the /teams, /events, and /odds endpoints.
 
-GET /v4/sports
+Most endpoints will always return all results which match your query. However, since the /teams, /events, and /odds endpoints can potentially return hundreds or even thousands of results, the resulting objects are paginated/limited and must be fetched in batches.
 
-Request Parameters
+The number of items by each request to these endpoints is determined by the limit parameter. This parameter currently has a default value of 10 but can be overridden up to a max value of 100.
 
-    language (string) — (Optional) The language that the sportName will be returned in.
+In some cases you may want to fetch all of the results from these endpoints. To do this, you can feed the nextCursor in the resonse as the cursor parameter in your next request to pick up where you left off. When the response does not contain a nextCursor property, you have reached the end of the results.
 
-Example Request
+Let’s take the following example, where we want to grab all finalized NBA events:
+Javascript
+Python
+Ruby
+PHP
+java
 
-GET /v4/sports?language=en
+import requests
 
-Example Response
+next_cursor = None
+event_data = []
 
-[
-  {
-    "sportId": 10,
-    "slug": "soccer",
-    "sportName": "Soccer"
-  },
-  {
-    "sportId": 11,
-    "slug": "basketball",
-    "sportName": "Basketball"
-  }
-]
+while True:
+    try:
+        response = requests.get('https://api.sportsgameodds.com/v2/events', params={
+            'leagueID': 'NBA',
+            'marketOddsAvailable': True,
+            'limit': 50,
+            'cursor': next_cursor
+        })
 
-The response will have a status code 200 indicating that the request was successful. If there are no sports available, the array may be empty.
-Response (200 OK)
+        data = response.json()
+        event_data.extend(data['events'])
 
-On a successful request, the server responds with a status code 200 and returns a JSON array containing the list of sports.
+        next_cursor = data.get('nextCursor')
+        if not next_cursor:
+            break
 
-Each object in the array contains the following fields:
+    except Exception as error:
+        print(f'Error fetching events: {error}')
+        break
 
-    sportId (number) — A unique identifier for the sport. This is the value you should use when sending the sport parameter to any other endpoints.
-    slug (string) — A URL-friendly version of the sport's name.
-    sportName (string) — The sport name.
-
-Notes
-
-    Endpoint cooldown: 1000ms
-	
-
-GET bookmakers
-
-Retrieves a list of bookmakers available in the system.
-Endpoint
-
-GET /v4/bookmakers
-
-Sample Response
-
-[
-  {
-    "bookmakerName": "188BET",
-    "slug": "188bet",
-    "liveOdds": false,
-    "cloneOf": null
-  },
-  {
-    "bookmakerName": "18Bet",
-    "slug": "18bet",
-    "liveOdds": null,
-    "cloneOf": null
-  }
-]
-
-Response (200 OK)
-
-On a successful request, the server responds with a status code 200 and returns a JSON array containing details about each bookmaker. Each object in the array contains the following fields:
-
-    bookmakerName (string) — The name of the bookmaker.
-    slug (string) — A URL-friendly version of the bookmaker's name. This is the value you should use when sending a bookmaker parameter to any other endpoints.
-    liveOdds (boolean|null) — Current live odds offered by the bookmaker.
-    cloneOf (string|null) — Name of the bookmaker this bookmaker is a clone of.
-
-Notes
-
-    Endpoint cooldown: 1000ms
-    The response will contain an array of bookmakers, and if no bookmakers are available, the array will be empty.
-    Ensure that you handle the case where liveOdds may be null, indicating that live odds are not currently available for that bookmaker.
-
-
-GET fixtures
-
-Retrieves a list of fixtures based on the specified parameters such as tournament ID, sport ID, participant ID, date range, and language.
-Endpoint
-
-GET /v4/fixtures
-
-Request
-Parameters
-
-    tournamentId (number) — The unique identifier for the tournament. This ID must correspond to an existing tournament.
-    sportId (number) — The unique identifier for the sport. This ID must correspond to an existing sport.
-    participantId (number) — The unique identifier for the participant. This ID must correspond to an existing participant.
-    from (string) — The start date and time for the fixtures in ISO 8601 format (e.g., YYYY-MM-DDTHH:MM:SSZ)
-    to (string) — The end date and time for the fixtures in ISO 8601 format (e.g., YYYY-MM-DDTHH:MM:SSZ)
-    language (a2) — (Optional) The language in which the tournament information should be returned. By default, the value is en for English
-    statusId (number: 0,1,2,3) — The statusId that the returned fixtures must have (0: Not yet started, 1: Live, 2: Finished, 3: Cancelled).
-    hasOdds (boolean) — Whether the fixture has odds available.
-
-Conditions
-
-    tournamentId: Can be the only parameter provided.
-    participantId: Can be the only parameter provided.
-    sportId: Must be accompanied by any of:
-        tournamentId
-        participantId
-        Both to and from, where both times are under 10 days apart.
-    to and from:
-        If tournamentId or participantId are provided, to and from aren't mandatory and providing only one is accepted.
-        If only to and from are provided, they must be under 48 hours apart.
-
-Example Request
-
-GET /v4/fixtures?sportId=10&from=2025-07-14T00:00:00Z&to=2025-07-21T00:00:00Z&hasOdds=true
-
-Example Response
-
-[
-  {
-    "fixtureId": "id1000015561098461",
-    "participant1Id": 3209,
-    "participant2Id": 3210,
-    "providerId": 61098461,
-    "seasonId": 127421,
-    "sportId": 10,
-    "startTime": "2025-07-21T00:00:00.000Z",
-    "statusId": 2,
-    "tournamentId": 155,
-    "trueEndTime": "2025-07-21T01:58:12.073Z",
-    "trueStartTime": "2025-07-21T00:00:02.751Z",
-    "updatedAt": "2025-07-21T01:58:12.073Z",
-    "hasOdds": true,
-    "externalProviders": {
-      "betradarId": 61098461,
-      "sofascoreId": 14069376,
-      "betgeniusId": 11833149,
-      "flashscoreId": "pbXYexxB",
-      "pinnacleId": 1611618343,
-      "oddinId": null,
-      "mollybetId": null,
-      "opticoddsId": null,
-      "lsportsId": null,
-      "txoddsId": null
-    },
-    "participant1Name": "CA Independiente Avellaneda",
-    "participant2Name": "CA Talleres de Cordoba",
-    "tournamentName": "Liga Profesional",
-    "categoryName": "Argentina"
-  }
-]
-
-Response (200 OK)
-
-On a successful request, the server responds with a status code 200 and returns a JSON array containing fixture objects with the following fields:
-
-    hasOdds (boolean) — Whether the fixture has odds available.
-    startTime (string) — The start time of the fixture.
-    participant1Id (number) — The ID of the first participant.
-    participant2Id (number) — The ID of the second participant.
-    fixtureId (string) — The unique identifier for the fixture.
-    sportId (number) — The ID of the sport associated with the fixture.
-    updatedAt (string) — The timestamp of the last update to the fixture.
-    tournamentId (number) — The ID of the tournament associated with the fixture.
-    seasonId (number) — (Optional) The ID of the season.
-    statusId (number) — The current status of the fixture.
-    trueStartTime (string|null) — The actual start time of the fixture, if available.
-    trueEndTime (string|null) — The actual end time of the fixture, if available.
-    externalProviders (object) — IDs from third-party providers:
-        betradarId (number|null) — (Optional) The ID assigned by Betradar.
-        sofascoreId (number|null) — (Optional) The ID assigned by Sofascore.
-        betgeniusId (number|null) — (Optional) The ID assigned by Betgenius.
-        flashscoreId (string|null) — (Optional) The ID assigned by Flashscore.
-        pinnacleId (number|null) — (Optional) The ID assigned by Pinnacle.
-        oddinId (number|null) — (Optional) The ID assigned by Oddin.
-        mollybetId (number|null) — (Optional) The unique ID assigned by Mollybet.
-        opticoddsId (number|null) — (Optional) The unique ID assigned by Opticodds.
-        lsportsId (number|null) — (Optional) The unique ID assigned by LSports.
-        txoddsId (number|null) — (Optional) The unique ID assigned by TXOdds.
-    participant1Name (string) — The name of the first participant (in your requested language).
-    participant2Name (string) — The name of the second participant (in your requested language).
-    tournamentName (string) — The name of the tournament.
-    categoryName (string) — The name of the category to which the tournament belongs.
-	
-GET markets
-
-Retrieves a list of markets available in the system.
-Endpoint
-
-GET /v4/markets
-
-Request Parameters
-
-    language (a2) — (Optional) The language in which the tournament information should be returned. By default, the value is en for English.
-
-Example Request
-
-GET /v4/markets?language=en
-
-Example Response
-
-[
-  {
-    "marketId": 101,
-    "marketLength": 3,
-    "marketName": "Full Time Result",
-    "playerProp": false,
-    "sportId": 10,
-    "handicap": 0,
-    "period": "fulltime",
-    "marketType": "1x2",
-    "outcomes": [
-      {
-        "outcomeId": 101,
-        "outcomeName": "1"
-      },
-      {
-        "outcomeId": 102,
-        "outcomeName": "X"
-      },
-      {
-        "outcomeId": 103,
-        "outcomeName": "2"
-      }
-    ]
-  },
-  {
-    "marketId": 104,
-    "marketLength": 2,
-    "marketName": "Both Teams To Score",
-    "playerProp": false,
-    "sportId": 10,
-    "handicap": 0,
-    "period": "fulltime",
-    "marketType": "totals",
-    "outcomes": [
-      {
-        "outcomeId": 104,
-        "outcomeName": "Yes"
-      },
-      {
-        "outcomeId": 105,
-        "outcomeName": "No"
-      }
-    ]
-  },
-  {
-    "marketId": 106,
-    "marketLength": 2,
-    "marketName": "Over Under Full Time",
-    "playerProp": false,
-    "sportId": 10,
-    "handicap": 0.5,
-    "period": "fulltime",
-    "marketType": "totals",
-    "outcomes": [
-      {
-        "outcomeId": 106,
-        "outcomeName": "Over"
-      },
-      {
-        "outcomeId": 107,
-        "outcomeName": "Under"
-      }
-    ]
-  }
-]
-
-Response (200 OK)
-
-On a successful request, the server responds with a status code 200 and returns a JSON array containing market objects. Each market object includes the following fields:
-
-    marketId (number) — The unique identifier for the market.
-    marketLength (number) — The number of outcomes in the market.
-    marketName (string) — The name of the market.
-    playerProp (boolean) — Indicates if the market is a player prop.
-    sportId (number) — The identifier for the associated sport.
-    handicap (number) — The handicap value for the market.
-    period (string) — The period of play that the market relates to.
-    marketType (string) — The type of the market.
-    outcomes (array) — An array of outcome objects associated with the market, where each outcome includes:
-        outcomeId (number) — The unique identifier for the outcome.
-        outcomeName (string) — The name of the outcome.
+for event in event_data:
+    odds = event['odds']
+    for odd_id, odd_object in odds.items():
+        print(f'Odd ID: {odd_id}')
+        print(f'Odd Value: {odd_object["closeOdds"]}')
 		
-GET participants
+Rate Limiting
 
-Retrieve a list of participants associated with a specific sport identified by the sportId.
-Endpoint
+Based on the package you chose, your API key will be limited to a certain number of requests made and/or objects returned during a given time interval. If you exceed this limit, you will receive a 429 status code and will be unable to make further requests until the limit resets.
 
-GET /v4/participants
+While we do make changes to our standard rate limits, these changes usually won’t affect existing subscribers, so unless you receive an email, your rate limit will remain the same as it was when you signed up. Therefore, the limits posted in this guide may be different from those your API key is subject to.
+Request Limits
 
-Request Parameters
+Each request you make to the Sports Game Odds API server will count towards your request rate limit.
 
-    sportId* (number) — A numeric identifier for the sport.
-    language (a2) — (Optional) The language that the names will be returned in, if available. If not available, en is used.
+    Amateur plan: 10 requests per minute
+    Rookie plan: 60 requests per minute
+    Pro plan: 1,000 requests per minute
 
-Example Request
+Object Limits
 
-GET /v4/participants?sportId=11&language=en
+Each request you make to the Sports Game Odds API server may return multiple objects in the response. Each object returned will count towards your object rate limit over a given time interval. Each response counts as a minimum of 1 object.
 
-Example Response
+    Amateur plan: 1,000 objects per month
+    Rookie plan: 5M objects per month
+    Pro plan: Unlimited objects per month
 
-{
-  "3409": "Chicago Bulls",
-  "3410": "Milwaukee Bucks"
-}
+Default Limits
 
-Response (200 OK)
+In order to protect our servers and ensure maximum uptime, the following default limits apply to all API keys. In general you shouldn’t ever hit these limits regardless of your plan, but if you do, feel free to reach out to us and we can find a solution for removing or increasing these default limits
 
-On a successful request, the server responds with a status code 200 and returns a JSON object where every key is the participantId and each value is the participant name.
+    50k requests per hour
+    300k objects per hour
+    7M objects per day
 
-Notes
+Strategies to Avoid Rate Limiting
 
-    Endpoint cooldown: 1000ms
-	
-GET odds
+To protect your application from rate limiting, you can use the following strategies:
 
-Retrieves detailed odds and metadata for a specified sports fixture from various bookmakers.
-Endpoint
+    Avoid a high frequency of calls to endpoints serving data that doesn’t change frequently (e.g., Teams, Players, Stats).
+    Cache this data locally to avoid making unnecessary requests.
+    Make use of available query params at each endpoint to focus on only the data you need.
+    You can always fetch data about your current rate limit usage using the /account/usage endpoint.
 
-GET /v4/odds
+Response Filtering Notice
 
-Request Parameters
+When your API key has limitations that cause data to be filtered from responses (such as limited bookmakers or restricted data types), you may receive a notice field in the API response. This notice informs you about what data has been filtered and can be accessed at higher API tiers.
 
-    fixtureId* (string) — Unique ID of the fixture
-    bookmakers (string) — (Optional) Comma-separated list of bookmakers
-    oddsFormat (string) — (Optional) Desired odds format. Options: fractional, decimal, american
-    language (string) — (Optional) Language code for translated labels
-    verbosity (number) — (Optional) Level of response detail. Higher value returns more verbose output.
+The notice field appears in responses when:
 
-Example Request
+    Events are filtered due to sport or league restrictions
+    Bookmaker odds are filtered due to bookmaker access limitations
+    Data types are filtered due to subscription tier restrictions
 
-GET /v4/odds?fixtureId=id1000001761300517&oddsFormat=decimal&verbosity=3
-
-Sample Response
+Example response with notice:
 
 {
-  "fixtureId": "id1000001761300517",
-  "participant1Id": 3,
-  "participant2Id": 17,
-  "sportId": 10,
-  "tournamentId": 17,
-  "seasonId": null,
-  "externalProviders": {
-    "betradarId": 61300517,
-    "mollybetId": null,
-    "opticoddsId": null,
-    "lsportsId": null,
-    "txoddsId": null,
-    "sofascoreId": null,
-    "betgeniusId": 12482853,
-    "flashscoreId": null,
-    "pinnacleId": 1610924789,
-    "oddinId": null
-  },
-  "statusId": 0,
-  "hasOdds": true,
-  "startTime": "2025-08-16T16:30:00.000Z",
-  "trueStartTime": null,
-  "trueEndTime": null,
-  "updatedAt": "2025-07-27T16:37:57.903Z",
-  "participant1Name": "Wolverhampton Wanderers",
-  "participant2Name": "Manchester City",
-  "sportName": "Soccer",
-  "tournamentSlug": "premier-league",
-  "categorySlug": "england",
-  "categoryName": "England",
-  "tournamentName": "Premier League",
-  "bookmakerOdds": {
-    "pinnacle": {
-      "markets": {
-        "101": {
-          "outcomes": {
-            "101": {
-              "players": {
-                "0": {
-                  "price": 5.97,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "home"
-                }
-              }
-            },
-            "102": {
-              "players": {
-                "0": {
-                  "price": 4.84,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "draw"
-                }
-              }
-            },
-            "103": {
-              "players": {
-                "0": {
-                  "price": 1.465,
-                  "limit": 537.63,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "away"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/3192397468/0/moneyline"
-        },
-        "1010": {
-          "outcomes": {
-            "1010": {
-              "players": {
-                "0": {
-                  "price": 1.641,
-                  "limit": 390.02,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "2.5/over"
-                }
-              }
-            },
-            "1011": {
-              "players": {
-                "0": {
-                  "price": 2.28,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "2.5/under"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127342/0/totals"
-        },
-        "1012": {
-          "outcomes": {
-            "1012": {
-              "players": {
-                "0": {
-                  "price": 2.6,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "3.5/over"
-                }
-              }
-            },
-            "1013": {
-              "players": {
-                "0": {
-                  "price": 1.492,
-                  "limit": 508.13,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "3.5/under"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127345/0/totals"
-        },
-        "1074": {
-          "outcomes": {
-            "1074": {
-              "players": {
-                "0": {
-                  "price": 3.42,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "0.25/home"
-                }
-              }
-            },
-            "1075": {
-              "players": {
-                "0": {
-                  "price": 1.32,
-                  "limit": 781.25,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "0.25/away"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127323/0/spreads"
-        },
-        "1076": {
-          "outcomes": {
-            "1076": {
-              "players": {
-                "0": {
-                  "price": 2.75,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "0.5/home"
-                }
-              }
-            },
-            "1077": {
-              "players": {
-                "0": {
-                  "price": 1.454,
-                  "limit": 550.66,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "0.5/away"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127324/0/spreads"
-        },
-        "1078": {
-          "outcomes": {
-            "1078": {
-              "players": {
-                "0": {
-                  "price": 2.44,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "0.75/home"
-                }
-              }
-            },
-            "1079": {
-              "players": {
-                "0": {
-                  "price": 1.571,
-                  "limit": 437.83,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "0.75/away"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127325/0/spreads"
-        },
-        "1080": {
-          "outcomes": {
-            "1080": {
-              "players": {
-                "0": {
-                  "price": 2.11,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "1.0/home"
-                }
-              }
-            },
-            "1081": {
-              "players": {
-                "0": {
-                  "price": 1.751,
-                  "limit": 332.89,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "1.0/away"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127326/0/spreads"
-        },
-        "1082": {
-          "outcomes": {
-            "1082": {
-              "players": {
-                "0": {
-                  "price": 1.819,
-                  "limit": 305.25,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "1.25/home"
-                }
-              }
-            },
-            "1083": {
-              "players": {
-                "0": {
-                  "price": 2.04,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "1.25/away"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/3192397468/0/spreads"
-        },
-        "1084": {
-          "outcomes": {
-            "1084": {
-              "players": {
-                "0": {
-                  "price": 1.636,
-                  "limit": 393.08,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "1.5/home"
-                }
-              }
-            },
-            "1085": {
-              "players": {
-                "0": {
-                  "price": 2.31,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "1.5/away"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127327/0/spreads"
-        },
-        "1086": {
-          "outcomes": {
-            "1086": {
-              "players": {
-                "0": {
-                  "price": 1.467,
-                  "limit": 535.33,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "1.75/home"
-                }
-              }
-            },
-            "1087": {
-              "players": {
-                "0": {
-                  "price": 2.74,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "1.75/away"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127328/0/spreads"
-        },
-        "1088": {
-          "outcomes": {
-            "1088": {
-              "players": {
-                "0": {
-                  "price": 1.298,
-                  "limit": 838.93,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "2.0/home"
-                }
-              }
-            },
-            "1089": {
-              "players": {
-                "0": {
-                  "price": 3.58,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "2.0/away"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127329/0/spreads"
-        },
-        "1090": {
-          "outcomes": {
-            "1090": {
-              "players": {
-                "0": {
-                  "price": 1.25,
-                  "limit": 1000,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "2.25/home"
-                }
-              }
-            },
-            "1091": {
-              "players": {
-                "0": {
-                  "price": 4.02,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "2.25/away"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127330/0/spreads"
-        },
-        "10166": {
-          "outcomes": {
-            "10166": {
-              "players": {
-                "0": {
-                  "price": 1.233,
-                  "limit": 1072.96,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "1.75/over"
-                }
-              }
-            },
-            "10167": {
-              "players": {
-                "0": {
-                  "price": 4.09,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "1.75/under"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127339/0/totals"
-        },
-        "10168": {
-          "outcomes": {
-            "10168": {
-              "players": {
-                "0": {
-                  "price": 1.282,
-                  "limit": 886.52,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "2.0/over"
-                }
-              }
-            },
-            "10169": {
-              "players": {
-                "0": {
-                  "price": 3.63,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "2.0/under"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127340/0/totals"
-        },
-        "10170": {
-          "outcomes": {
-            "10170": {
-              "players": {
-                "0": {
-                  "price": 1.462,
-                  "limit": 541.13,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "2.25/over"
-                }
-              }
-            },
-            "10171": {
-              "players": {
-                "0": {
-                  "price": 2.73,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "2.25/under"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127341/0/totals"
-        },
-        "10172": {
-          "outcomes": {
-            "10172": {
-              "players": {
-                "0": {
-                  "price": 1.806,
-                  "limit": 310.17,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "2.75/over"
-                }
-              }
-            },
-            "10173": {
-              "players": {
-                "0": {
-                  "price": 2.04,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "2.75/under"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/3192397468/0/totals"
-        },
-        "10174": {
-          "outcomes": {
-            "10174": {
-              "players": {
-                "0": {
-                  "price": 2.05,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "3.0/over"
-                }
-              }
-            },
-            "10175": {
-              "players": {
-                "0": {
-                  "price": 1.781,
-                  "limit": 320.1,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "3.0/under"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127343/0/totals"
-        },
-        "10176": {
-          "outcomes": {
-            "10176": {
-              "players": {
-                "0": {
-                  "price": 2.33,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "3.25/over"
-                }
-              }
-            },
-            "10177": {
-              "players": {
-                "0": {
-                  "price": 1.609,
-                  "limit": 410.51,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "3.25/under"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127344/0/totals"
-        },
-        "10178": {
-          "outcomes": {
-            "10178": {
-              "players": {
-                "0": {
-                  "price": 3.08,
-                  "limit": 250,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "3.75/over"
-                }
-              }
-            },
-            "10179": {
-              "players": {
-                "0": {
-                  "price": 1.369,
-                  "limit": 677.51,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "3.75/under"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127346/0/totals"
-        },
-        "10208": {
-          "outcomes": {
-            "10208": {
-              "players": {
-                "0": {
-                  "price": 6.25,
-                  "limit": 50,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "home"
-                }
-              }
-            },
-            "10209": {
-              "players": {
-                "0": {
-                  "price": 2.59,
-                  "limit": 50,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "draw"
-                }
-              }
-            },
-            "10210": {
-              "players": {
-                "0": {
-                  "price": 1.943,
-                  "limit": 53.02,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "away"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/3192397471/1/moneyline"
-        },
-        "10258": {
-          "outcomes": {
-            "10258": {
-              "players": {
-                "0": {
-                  "price": 2.46,
-                  "limit": 50,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "1.5/over"
-                }
-              }
-            },
-            "10259": {
-              "players": {
-                "0": {
-                  "price": 1.549,
-                  "limit": 91.07,
-                  "active": true,
-                  "changedAt": "2025-07-27T13:25:47.505Z",
-                  "playerId": 0,
-                  "bookmakerOutcomeId": "1.5/under"
-                }
-              }
-            }
-          },
-          "bookmakerMarketId": "line/29/1980/49743127391/1/totals"
-        }
-      },
-      "bookmakerIsActive": true,
-      "bookmakerFixtureId": "1610924789",
-      "fixturePath": "https://www.pinnacle.com/en/e/e/e/1610924789/#all"
-    }
-  }
+    "success": true,
+    "data": [...],
+    "nextCursor": "n.1720564800000.DCtqsAt8d0GIFAvMmfzD",
+    "notice": "Response is missing 3 events and 15 bookmaker odds. Upgrade your API key to access all data from this query."
 }
 
-Response Fields Breakdown
-Top-Level Fields
+This notice is designed to help you understand when your current subscription might be limiting your access to data, allowing you to make informed decisions about upgrading your plan.
 
-    fixtureId string — Internal unique ID for the fixture.
-    participant1Id number — The ID of the first participant.
-    participant2Id number — The ID of the second participant.
-    sportId number — Sport ID
-    tournamentId number — Tournament ID
-    seasonId number|null — (Optional) The ID of the season.
-    externalProviders (object) — IDs from third-party providers:
-        betradarId (number|null) — (Optional) The ID assigned by Betradar.
-        mollybetId (number|null) — (Optional) The unique ID assigned by Mollybet.
-        opticoddsId (number|null) — (Optional) The unique ID assigned by Opticodds.
-        lsportsId (number|null) — (Optional) The unique ID assigned by LSports.
-        txoddsId (number|null) — (Optional) The unique ID assigned by TXOdds.
-        sofascoreId (number|null) — (Optional) The ID assigned by Sofascore.
-        betgeniusId (number|null) — (Optional) The ID assigned by Betgenius.
-        flashscoreId (string|null) — (Optional) The ID assigned by Flashscore.
-        pinnacleId (number|null) — (Optional) The ID assigned by Pinnacle.
-        oddinId (number|null) — (Optional) The ID assigned by Oddin.
-    statusId number — The current status of the fixture.
-    hasOdds boolean — Whether the fixture has odds available.
-    startTime string — ISO 8601 start time.
-    trueStartTime string|null — The actual start time of the fixture, if available.
-    trueEndTime string|null — The actual end time of the fixture, if available.
-    updatedAt string — ISO 8601 last update time.
-	
-	Endpoint cooldown: 500ms
-	
-GET historical-odds
-Endpoint
+I have the amateur plan for now.
 
-GET /v4/historical-odds
 
-Request Parameters
+Below is a list of odds markets available to at least one Basketball league. Additional markets (those not listed here) can be made available through a custom plan by contacting us.
+Market	OddIDs	Identifiers	LeagueIDs
+Moneyline	Home:
+points-home-game-ml-home
+Away:
+points-away-game-ml-away	statID:
+points
+betTypeID:
+ml
+periodID:
+game
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Spread	Home:
+points-home-game-sp-home
+Away:
+points-away-game-sp-away	statID:
+points
+betTypeID:
+sp
+periodID:
+game
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Team Points Over/Under	Home Team - Over:
+points-home-game-ou-over
+Away Team - Over:
+points-away-game-ou-over
+Home Team - Under:
+points-home-game-ou-under
+Away Team - Under:
+points-away-game-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+game
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Over/Under	Over:
+points-all-game-ou-over
+Under:
+points-all-game-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Points Over/Under	Over:
+points-ANY_PLAYER_ID-game-ou-over
+Under:
+points-ANY_PLAYER_ID-game-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Points Even/Odd	Home Team - Even:
+points-home-game-eo-even
+Away Team - Even:
+points-away-game-eo-even
+Home Team - Odd:
+points-home-game-eo-odd
+Away Team - Odd:
+points-away-game-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+game
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total Points Even/Odd	Even:
+points-all-game-eo-even
+Odd:
+points-all-game-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+game
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Points Even/Odd	Even:
+points-ANY_PLAYER_ID-game-eo-even
+Odd:
+points-ANY_PLAYER_ID-game-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Any Points Yes/No
 
-    fixtureId* (string) — Fixture ID to retrieve historical odds for.
-    bookmakers* (string) — Comma-separated list of bookmaker slugs (max 3) to filter results. Example: pinnacle,bet365
-    id (number) — (Optional) The unique ID of a specific historical odds entry to filter by.
-    playerId (number) — (Optional) The playerId associated with the odds to narrow down results.
-    outcomeId (number) — (Optional) The outcomeId to filter odds for a specific outcome.
-    active (boolean) — (Optional) Filter based on whether the odds entry is currently active.
+Team Anytime Points	Home Team - Yes:
+points-home-game-yn-yes
+Away Team - Yes:
+points-away-game-yn-yes
+Home Team - No:
+points-home-game-yn-no
+Away Team - No:
+points-away-game-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+game
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Any Points Yes/No
 
-Example Request
+Anytime Points	Yes:
+points-all-game-yn-yes
+No:
+points-all-game-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+game
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Any Points Yes/No
 
-GET /v4/historical-odds?fixtureId=id1000000758265379
+Player Anytime Points	Yes:
+points-ANY_PLAYER_ID-game-yn-yes
+No:
+points-ANY_PLAYER_ID-game-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+3-Way Moneyline	Away Team - Away:
+points-away-game-ml3way-away
+Home Team - Home:
+points-home-game-ml3way-home
+Away Team - Away/Draw:
+points-away-game-ml3way-away+draw
+Home Team - Home/Draw:
+points-home-game-ml3way-home+draw	statID:
+points
+betTypeID:
+ml3way
+periodID:
+game
+statEntityIDs:
+away, home	NBA
+NCAAB
+WNBA
+Regulation Moneyline	Home:
+points-home-reg-ml-home
+Away:
+points-away-reg-ml-away	statID:
+points
+betTypeID:
+ml
+periodID:
+reg
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Regulation Spread	Home:
+points-home-reg-sp-home
+Away:
+points-away-reg-sp-away	statID:
+points
+betTypeID:
+sp
+periodID:
+reg
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Regulation Over/Under	Over:
+points-all-reg-ou-over
+Under:
+points-all-reg-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+reg
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Regulation 3-Way Moneyline	Away Team - Away:
+points-away-reg-ml3way-away
+Home Team - Home:
+points-home-reg-ml3way-home
+Draw:
+points-all-reg-ml3way-draw
+Away Team - Away/Draw:
+points-away-reg-ml3way-away+draw
+Home Team - Home/Draw:
+points-home-reg-ml3way-home+draw
+Home/Away:
+points-all-reg-ml3way-not_draw	statID:
+points
+betTypeID:
+ml3way
+periodID:
+reg
+statEntityIDs:
+away, home, all	NBA
+NCAAB
+WNBA
+1st Half Moneyline	Home:
+points-home-1h-ml-home
+Away:
+points-away-1h-ml-away	statID:
+points
+betTypeID:
+ml
+periodID:
+1h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+1st Half Spread	Home:
+points-home-1h-sp-home
+Away:
+points-away-1h-sp-away	statID:
+points
+betTypeID:
+sp
+periodID:
+1h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Team 1st Half Points Over/Under	Home Team - Over:
+points-home-1h-ou-over
+Away Team - Over:
+points-away-1h-ou-over
+Home Team - Under:
+points-home-1h-ou-under
+Away Team - Under:
+points-away-1h-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+1h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+1st Half Over/Under	Over:
+points-all-1h-ou-over
+Under:
+points-all-1h-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 1st Half Points Over/Under	Over:
+points-ANY_PLAYER_ID-1h-ou-over
+Under:
+points-ANY_PLAYER_ID-1h-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 1st Half Points Even/Odd	Home Team - Even:
+points-home-1h-eo-even
+Away Team - Even:
+points-away-1h-eo-even
+Home Team - Odd:
+points-home-1h-eo-odd
+Away Team - Odd:
+points-away-1h-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+1h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total 1st Half Points Even/Odd	Even:
+points-all-1h-eo-even
+Odd:
+points-all-1h-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+1h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 1st Half Points Even/Odd	Even:
+points-ANY_PLAYER_ID-1h-eo-even
+Odd:
+points-ANY_PLAYER_ID-1h-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Any 1st Half Points Yes/No
 
-Example Response
+Team Anytime Points (1st Half)	Home Team - Yes:
+points-home-1h-yn-yes
+Away Team - Yes:
+points-away-1h-yn-yes
+Home Team - No:
+points-home-1h-yn-no
+Away Team - No:
+points-away-1h-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+1h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Any 1st Half Points Yes/No
 
-{
-  "fixtureId": "id1000000758265379",
-  "bookmakers": {
-    "pinnacle": {
-      "markets": {
-        "101": {
-          "outcomes": {
-            "101": {
-              "players": {
-                "0": [
-                  {
-                    "createdAt": "2025-04-16T21:12:10.506331+00:00",
-                    "price": 9.11,
-                    "limit": 1191.25,
-                    "active": false,
-                    "exchangeMeta": null
-                  },
-                  {
-                    "createdAt": "2025-04-16T20:50:58.321847+00:00",
-                    "price": 9.11,
-                    "limit": 1191.25,
-                    "active": true,
-                    "exchangeMeta": null
-                  }
-                ]
-              }
-            }
-          }
-        },
-        "10168": {
-          "outcomes": {
-            "10168": {
-              "players": {
-                "0": [
-                  {
-                    "createdAt": "2025-04-16T20:16:45.057806+00:00",
-                    "price": 1.729,
-                    "limit": 13072.7023319616,
-                    "active": false,
-                    "exchangeMeta": null
-                  },
-                  {
-                    "createdAt": "2025-04-16T20:16:18.597131+00:00",
-                    "price": 1.729,
-                    "limit": 13072.7023319616,
-                    "active": true,
-                    "exchangeMeta": null
-                  },
-                  {
-                    "createdAt": "2025-04-16T20:15:51.441377+00:00",
-                    "price": 1.699,
-                    "limit": 13633.7625178827,
-                    "active": true,
-                    "exchangeMeta": null
-                  }
-                ]
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
+Anytime Points (1st Half)	Yes:
+points-all-1h-yn-yes
+No:
+points-all-1h-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+1h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Any 1st Half Points Yes/No
 
-Response (200 OK)
+Player Anytime Points (1st Half)	Yes:
+points-ANY_PLAYER_ID-1h-yn-yes
+No:
+points-ANY_PLAYER_ID-1h-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+1st Half 3-Way Moneyline	Away Team - Away:
+points-away-1h-ml3way-away
+Home Team - Home:
+points-home-1h-ml3way-home
+Away Team - Away/Draw:
+points-away-1h-ml3way-away+draw
+Home Team - Home/Draw:
+points-home-1h-ml3way-home+draw	statID:
+points
+betTypeID:
+ml3way
+periodID:
+1h
+statEntityIDs:
+away, home	NBA
+NCAAB
+WNBA
+2nd Half Moneyline	Home:
+points-home-2h-ml-home
+Away:
+points-away-2h-ml-away	statID:
+points
+betTypeID:
+ml
+periodID:
+2h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+2nd Half Spread	Home:
+points-home-2h-sp-home
+Away:
+points-away-2h-sp-away	statID:
+points
+betTypeID:
+sp
+periodID:
+2h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Team 2nd Half Points Over/Under	Home Team - Over:
+points-home-2h-ou-over
+Away Team - Over:
+points-away-2h-ou-over
+Home Team - Under:
+points-home-2h-ou-under
+Away Team - Under:
+points-away-2h-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+2h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+2nd Half Over/Under	Over:
+points-all-2h-ou-over
+Under:
+points-all-2h-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 2nd Half Points Over/Under	Over:
+points-ANY_PLAYER_ID-2h-ou-over
+Under:
+points-ANY_PLAYER_ID-2h-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 2nd Half Points Even/Odd	Home Team - Even:
+points-home-2h-eo-even
+Away Team - Even:
+points-away-2h-eo-even
+Home Team - Odd:
+points-home-2h-eo-odd
+Away Team - Odd:
+points-away-2h-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+2h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total 2nd Half Points Even/Odd	Even:
+points-all-2h-eo-even
+Odd:
+points-all-2h-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+2h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 2nd Half Points Even/Odd	Even:
+points-ANY_PLAYER_ID-2h-eo-even
+Odd:
+points-ANY_PLAYER_ID-2h-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Any 2nd Half Points Yes/No
 
-On a successful request, the server responds with a status code 200 and returns a map of fixtureId to nested bookmaker odds history..
+Team Anytime Points (2nd Half)	Home Team - Yes:
+points-home-2h-yn-yes
+Away Team - Yes:
+points-away-2h-yn-yes
+Home Team - No:
+points-home-2h-yn-no
+Away Team - No:
+points-away-2h-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+2h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Any 2nd Half Points Yes/No
 
-    bookmakers (object) — Odds grouped by bookmaker slug
-        markets (object) — Each fixture contains market objects with outcomes.
-        outcomes (object) — Outcome IDs with player data.
-        players (object) — Players with odds data containing:
-            id (number) — The unique identifier for the historical odds entry.
-            createdAt (string) — The timestamp when the historical odds entry was created.
-            price (number) — The price (odds) offered.
-            limit (number) — The maximum stake allowed for the odds.
-            active (boolean) — Whether the odds are currently active.
-            exchangeMeta (object|null) — Exchange metadata if applicable, including back and lay prices.
+Anytime Points (2nd Half)	Yes:
+points-all-2h-yn-yes
+No:
+points-all-2h-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+2h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Any 2nd Half Points Yes/No
 
-Notes
+Player Anytime Points (2nd Half)	Yes:
+points-ANY_PLAYER_ID-2h-yn-yes
+No:
+points-ANY_PLAYER_ID-2h-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+2nd Half 3-Way Moneyline	Away Team - Away:
+points-away-2h-ml3way-away
+Home Team - Home:
+points-home-2h-ml3way-home
+Away Team - Away/Draw:
+points-away-2h-ml3way-away+draw
+Home Team - Home/Draw:
+points-home-2h-ml3way-home+draw	statID:
+points
+betTypeID:
+ml3way
+periodID:
+2h
+statEntityIDs:
+away, home	NBA
+NCAAB
+WNBA
+1st Quarter Moneyline	Home:
+points-home-1q-ml-home
+Away:
+points-away-1q-ml-away	statID:
+points
+betTypeID:
+ml
+periodID:
+1q
+statEntityIDs:
+home, away	NBA
+WNBA
+1st Quarter Spread	Home:
+points-home-1q-sp-home
+Away:
+points-away-1q-sp-away	statID:
+points
+betTypeID:
+sp
+periodID:
+1q
+statEntityIDs:
+home, away	NBA
+WNBA
+Team 1st Quarter Points Over/Under	Home Team - Over:
+points-home-1q-ou-over
+Away Team - Over:
+points-away-1q-ou-over
+Home Team - Under:
+points-home-1q-ou-under
+Away Team - Under:
+points-away-1q-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+1q
+statEntityIDs:
+home, away	NBA
+WNBA
+1st Quarter Over/Under	Over:
+points-all-1q-ou-over
+Under:
+points-all-1q-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+all	NBA
+WNBA
+Player 1st Quarter Points Over/Under	Over:
+points-ANY_PLAYER_ID-1q-ou-over
+Under:
+points-ANY_PLAYER_ID-1q-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 1st Quarter Points Even/Odd	Home Team - Even:
+points-home-1q-eo-even
+Away Team - Even:
+points-away-1q-eo-even
+Home Team - Odd:
+points-home-1q-eo-odd
+Away Team - Odd:
+points-away-1q-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+1q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 1st Quarter Points Even/Odd	Even:
+points-all-1q-eo-even
+Odd:
+points-all-1q-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+1q
+statEntityID:
+all	NBA
+WNBA
+Player 1st Quarter Points Even/Odd	Even:
+points-ANY_PLAYER_ID-1q-eo-even
+Odd:
+points-ANY_PLAYER_ID-1q-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 1st Quarter Points Yes/No
 
-    Endpoint cooldown: 5000ms
-	
-GET settlements
+Team Anytime Points (1st Quarter)	Home Team - Yes:
+points-home-1q-yn-yes
+Away Team - Yes:
+points-away-1q-yn-yes
+Home Team - No:
+points-home-1q-yn-no
+Away Team - No:
+points-away-1q-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+1q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 1st Quarter Points Yes/No
 
-Returns settlement results for all available markets in a specific fixture.
-Endpoint
+Anytime Points (1st Quarter)	Yes:
+points-all-1q-yn-yes
+No:
+points-all-1q-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+1q
+statEntityID:
+all	NBA
+WNBA
+Player Any 1st Quarter Points Yes/No
 
-GET /v4/settlements
+Player Anytime Points (1st Quarter)	Yes:
+points-ANY_PLAYER_ID-1q-yn-yes
+No:
+points-ANY_PLAYER_ID-1q-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+1st Quarter 3-Way Moneyline	Away Team - Away:
+points-away-1q-ml3way-away
+Home Team - Home:
+points-home-1q-ml3way-home
+Away Team - Away/Draw:
+points-away-1q-ml3way-away+draw
+Home Team - Home/Draw:
+points-home-1q-ml3way-home+draw	statID:
+points
+betTypeID:
+ml3way
+periodID:
+1q
+statEntityIDs:
+away, home	NBA
+WNBA
+2nd Quarter Moneyline	Home:
+points-home-2q-ml-home
+Away:
+points-away-2q-ml-away	statID:
+points
+betTypeID:
+ml
+periodID:
+2q
+statEntityIDs:
+home, away	NBA
+WNBA
+2nd Quarter Spread	Home:
+points-home-2q-sp-home
+Away:
+points-away-2q-sp-away	statID:
+points
+betTypeID:
+sp
+periodID:
+2q
+statEntityIDs:
+home, away	NBA
+WNBA
+Team 2nd Quarter Points Over/Under	Home Team - Over:
+points-home-2q-ou-over
+Away Team - Over:
+points-away-2q-ou-over
+Home Team - Under:
+points-home-2q-ou-under
+Away Team - Under:
+points-away-2q-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+2q
+statEntityIDs:
+home, away	NBA
+WNBA
+2nd Quarter Over/Under	Over:
+points-all-2q-ou-over
+Under:
+points-all-2q-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+2q
+statEntityID:
+all	NBA
+WNBA
+Player 2nd Quarter Points Over/Under	Over:
+points-ANY_PLAYER_ID-2q-ou-over
+Under:
+points-ANY_PLAYER_ID-2q-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+2q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 2nd Quarter Points Even/Odd	Home Team - Even:
+points-home-2q-eo-even
+Away Team - Even:
+points-away-2q-eo-even
+Home Team - Odd:
+points-home-2q-eo-odd
+Away Team - Odd:
+points-away-2q-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+2q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 2nd Quarter Points Even/Odd	Even:
+points-all-2q-eo-even
+Odd:
+points-all-2q-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+2q
+statEntityID:
+all	NBA
+WNBA
+Player 2nd Quarter Points Even/Odd	Even:
+points-ANY_PLAYER_ID-2q-eo-even
+Odd:
+points-ANY_PLAYER_ID-2q-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+2q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 2nd Quarter Points Yes/No
 
-Request Parameters
+Team Anytime Points (2nd Quarter)	Home Team - Yes:
+points-home-2q-yn-yes
+Away Team - Yes:
+points-away-2q-yn-yes
+Home Team - No:
+points-home-2q-yn-no
+Away Team - No:
+points-away-2q-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+2q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 2nd Quarter Points Yes/No
 
-    fixtureId* (string) — The unique ID of the fixture for which to return settlement data.
-    playerId (number) — (Optional) The unique ID of the player to filter results by.
-    outcomeId (number) — (Optional) The unique ID of the outcome to filter results by.
+Anytime Points (2nd Quarter)	Yes:
+points-all-2q-yn-yes
+No:
+points-all-2q-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+2q
+statEntityID:
+all	NBA
+WNBA
+Player Any 2nd Quarter Points Yes/No
 
-Example Request
+Player Anytime Points (2nd Quarter)	Yes:
+points-ANY_PLAYER_ID-2q-yn-yes
+No:
+points-ANY_PLAYER_ID-2q-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+2q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+2nd Quarter 3-Way Moneyline	Away Team - Away:
+points-away-2q-ml3way-away
+Home Team - Home:
+points-home-2q-ml3way-home
+Away Team - Away/Draw:
+points-away-2q-ml3way-away+draw
+Home Team - Home/Draw:
+points-home-2q-ml3way-home+draw	statID:
+points
+betTypeID:
+ml3way
+periodID:
+2q
+statEntityIDs:
+away, home	NBA
+WNBA
+3rd Quarter Moneyline	Home:
+points-home-3q-ml-home
+Away:
+points-away-3q-ml-away	statID:
+points
+betTypeID:
+ml
+periodID:
+3q
+statEntityIDs:
+home, away	NBA
+WNBA
+3rd Quarter Spread	Home:
+points-home-3q-sp-home
+Away:
+points-away-3q-sp-away	statID:
+points
+betTypeID:
+sp
+periodID:
+3q
+statEntityIDs:
+home, away	NBA
+WNBA
+Team 3rd Quarter Points Over/Under	Home Team - Over:
+points-home-3q-ou-over
+Away Team - Over:
+points-away-3q-ou-over
+Home Team - Under:
+points-home-3q-ou-under
+Away Team - Under:
+points-away-3q-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+3q
+statEntityIDs:
+home, away	NBA
+WNBA
+3rd Quarter Over/Under	Over:
+points-all-3q-ou-over
+Under:
+points-all-3q-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+3q
+statEntityID:
+all	NBA
+WNBA
+Player 3rd Quarter Points Over/Under	Over:
+points-ANY_PLAYER_ID-3q-ou-over
+Under:
+points-ANY_PLAYER_ID-3q-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+3q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 3rd Quarter Points Even/Odd	Home Team - Even:
+points-home-3q-eo-even
+Away Team - Even:
+points-away-3q-eo-even
+Home Team - Odd:
+points-home-3q-eo-odd
+Away Team - Odd:
+points-away-3q-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+3q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 3rd Quarter Points Even/Odd	Even:
+points-all-3q-eo-even
+Odd:
+points-all-3q-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+3q
+statEntityID:
+all	NBA
+WNBA
+Player 3rd Quarter Points Even/Odd	Even:
+points-ANY_PLAYER_ID-3q-eo-even
+Odd:
+points-ANY_PLAYER_ID-3q-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+3q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 3rd Quarter Points Yes/No
 
-GET /v4/settlements?fixtureId=id1000000761280685
+Team Anytime Points (3rd Quarter)	Home Team - Yes:
+points-home-3q-yn-yes
+Away Team - Yes:
+points-away-3q-yn-yes
+Home Team - No:
+points-home-3q-yn-no
+Away Team - No:
+points-away-3q-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+3q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 3rd Quarter Points Yes/No
 
-Example Response
+Anytime Points (3rd Quarter)	Yes:
+points-all-3q-yn-yes
+No:
+points-all-3q-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+3q
+statEntityID:
+all	NBA
+WNBA
+Player Any 3rd Quarter Points Yes/No
 
-{
-  "fixtureId": "id1000000761280685",
-  "markets": {
-    "101": {
-      "outcomes": {
-        "101": {
-          "players": {
-            "0": {
-              "result": "WIN"
-            }
-          }
-        },
-        "102": {
-          "players": {
-            "0": {
-              "result": "LOSE"
-            }
-          }
-        },
-        "103": {
-          "players": {
-            "0": {
-              "result": "LOSE"
-            }
-          }
-        }
-      }
-    },
-    "106": {
-      "outcomes": {
-        "106": {
-          "players": {
-            "0": {
-              "result": "WIN"
-            }
-          }
-        },
-        "107": {
-          "players": {
-            "0": {
-              "result": "LOSE"
-            }
-          }
-        }
-      }
-    },
-    "1056": {
-      "outcomes": {
-        "1056": {
-          "players": {
-            "0": {
-              "result": "PUSH"
-            }
-          }
-        },
-        "1057": {
-          "players": {
-            "0": {
-              "result": "PUSH"
-            }
-          }
-        }
-      }
-    }
-  }
-}
+Player Anytime Points (3rd Quarter)	Yes:
+points-ANY_PLAYER_ID-3q-yn-yes
+No:
+points-ANY_PLAYER_ID-3q-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+3q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+3rd Quarter 3-Way Moneyline	Away Team - Away:
+points-away-3q-ml3way-away
+Home Team - Home:
+points-home-3q-ml3way-home
+Away Team - Away/Draw:
+points-away-3q-ml3way-away+draw
+Home Team - Home/Draw:
+points-home-3q-ml3way-home+draw	statID:
+points
+betTypeID:
+ml3way
+periodID:
+3q
+statEntityIDs:
+away, home	NBA
+WNBA
+4th Quarter Moneyline	Home:
+points-home-4q-ml-home
+Away:
+points-away-4q-ml-away	statID:
+points
+betTypeID:
+ml
+periodID:
+4q
+statEntityIDs:
+home, away	NBA
+WNBA
+4th Quarter Spread	Home:
+points-home-4q-sp-home
+Away:
+points-away-4q-sp-away	statID:
+points
+betTypeID:
+sp
+periodID:
+4q
+statEntityIDs:
+home, away	NBA
+WNBA
+Team 4th Quarter Points Over/Under	Home Team - Over:
+points-home-4q-ou-over
+Away Team - Over:
+points-away-4q-ou-over
+Home Team - Under:
+points-home-4q-ou-under
+Away Team - Under:
+points-away-4q-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+4q
+statEntityIDs:
+home, away	NBA
+WNBA
+4th Quarter Over/Under	Over:
+points-all-4q-ou-over
+Under:
+points-all-4q-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+all	NBA
+WNBA
+Player 4th Quarter Points Over/Under	Over:
+points-ANY_PLAYER_ID-4q-ou-over
+Under:
+points-ANY_PLAYER_ID-4q-ou-under	statID:
+points
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 4th Quarter Points Even/Odd	Home Team - Even:
+points-home-4q-eo-even
+Away Team - Even:
+points-away-4q-eo-even
+Home Team - Odd:
+points-home-4q-eo-odd
+Away Team - Odd:
+points-away-4q-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+4q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 4th Quarter Points Even/Odd	Even:
+points-all-4q-eo-even
+Odd:
+points-all-4q-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+4q
+statEntityID:
+all	NBA
+WNBA
+Player 4th Quarter Points Even/Odd	Even:
+points-ANY_PLAYER_ID-4q-eo-even
+Odd:
+points-ANY_PLAYER_ID-4q-eo-odd	statID:
+points
+betTypeID:
+eo
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 4th Quarter Points Yes/No
 
-Response (200 OK)
+Team Anytime Points (4th Quarter)	Home Team - Yes:
+points-home-4q-yn-yes
+Away Team - Yes:
+points-away-4q-yn-yes
+Home Team - No:
+points-home-4q-yn-no
+Away Team - No:
+points-away-4q-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+4q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 4th Quarter Points Yes/No
 
-On a successful request, the server responds with a status code 200 — Returns the settlement result of each outcome per player for the given fixture.
+Anytime Points (4th Quarter)	Yes:
+points-all-4q-yn-yes
+No:
+points-all-4q-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+4q
+statEntityID:
+all	NBA
+WNBA
+Player Any 4th Quarter Points Yes/No
 
-    fixtureId (string) — The unique identifier of the fixture to retrieve scores for.
-    markets (object) — A map of marketId to outcome and player result information.
-        outcomes (object) — Map of outcome IDs to outcome data.
-            players (object) — Each outcome maps to one or more players offering odds.
-                result (string) — The final result of the player's outcome. Possible values are: WIN, LOSE, HALFWIN, HALFLOSS, PUSH, CANCELLED, UNDECIDED
-				
-				Notes
+Player Anytime Points (4th Quarter)	Yes:
+points-ANY_PLAYER_ID-4q-yn-yes
+No:
+points-ANY_PLAYER_ID-4q-yn-no	statID:
+points
+betTypeID:
+yn
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+4th Quarter 3-Way Moneyline	Away Team - Away:
+points-away-4q-ml3way-away
+Home Team - Home:
+points-home-4q-ml3way-home
+Away Team - Away/Draw:
+points-away-4q-ml3way-away+draw
+Home Team - Home/Draw:
+points-home-4q-ml3way-home+draw	statID:
+points
+betTypeID:
+ml3way
+periodID:
+4q
+statEntityIDs:
+away, home	NBA
+WNBA
+Team Blocks Over/Under	Home Team - Over:
+blocks-home-game-ou-over
+Away Team - Over:
+blocks-away-game-ou-over
+Home Team - Under:
+blocks-home-game-ou-under
+Away Team - Under:
+blocks-away-game-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+game
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total Blocks Over/Under	Over:
+blocks-all-game-ou-over
+Under:
+blocks-all-game-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Blocks Over/Under	Over:
+blocks-ANY_PLAYER_ID-game-ou-over
+Under:
+blocks-ANY_PLAYER_ID-game-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Blocks Even/Odd	Home Team - Even:
+blocks-home-game-eo-even
+Away Team - Even:
+blocks-away-game-eo-even
+Home Team - Odd:
+blocks-home-game-eo-odd
+Away Team - Odd:
+blocks-away-game-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+game
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total Blocks Even/Odd	Even:
+blocks-all-game-eo-even
+Odd:
+blocks-all-game-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+game
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Blocks Even/Odd	Even:
+blocks-ANY_PLAYER_ID-game-eo-even
+Odd:
+blocks-ANY_PLAYER_ID-game-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Any Blocks Yes/No
 
-    Endpoint cooldown: 2000ms
-	
+Team Anytime Blocks	Home Team - Yes:
+blocks-home-game-yn-yes
+Away Team - Yes:
+blocks-away-game-yn-yes
+Home Team - No:
+blocks-home-game-yn-no
+Away Team - No:
+blocks-away-game-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+game
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Any Blocks Yes/No
+
+Anytime Blocks	Yes:
+blocks-all-game-yn-yes
+No:
+blocks-all-game-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+game
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Any Blocks Yes/No
+
+Player Anytime Blocks	Yes:
+blocks-ANY_PLAYER_ID-game-yn-yes
+No:
+blocks-ANY_PLAYER_ID-game-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 1st Half Blocks Over/Under	Home Team - Over:
+blocks-home-1h-ou-over
+Away Team - Over:
+blocks-away-1h-ou-over
+Home Team - Under:
+blocks-home-1h-ou-under
+Away Team - Under:
+blocks-away-1h-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+1h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total 1st Half Blocks Over/Under	Over:
+blocks-all-1h-ou-over
+Under:
+blocks-all-1h-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 1st Half Blocks Over/Under	Over:
+blocks-ANY_PLAYER_ID-1h-ou-over
+Under:
+blocks-ANY_PLAYER_ID-1h-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 1st Half Blocks Even/Odd	Home Team - Even:
+blocks-home-1h-eo-even
+Away Team - Even:
+blocks-away-1h-eo-even
+Home Team - Odd:
+blocks-home-1h-eo-odd
+Away Team - Odd:
+blocks-away-1h-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+1h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total 1st Half Blocks Even/Odd	Even:
+blocks-all-1h-eo-even
+Odd:
+blocks-all-1h-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+1h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 1st Half Blocks Even/Odd	Even:
+blocks-ANY_PLAYER_ID-1h-eo-even
+Odd:
+blocks-ANY_PLAYER_ID-1h-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Any 1st Half Blocks Yes/No
+
+Team Anytime Blocks (1st Half)	Home Team - Yes:
+blocks-home-1h-yn-yes
+Away Team - Yes:
+blocks-away-1h-yn-yes
+Home Team - No:
+blocks-home-1h-yn-no
+Away Team - No:
+blocks-away-1h-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+1h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Any 1st Half Blocks Yes/No
+
+Anytime Blocks (1st Half)	Yes:
+blocks-all-1h-yn-yes
+No:
+blocks-all-1h-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+1h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Any 1st Half Blocks Yes/No
+
+Player Anytime Blocks (1st Half)	Yes:
+blocks-ANY_PLAYER_ID-1h-yn-yes
+No:
+blocks-ANY_PLAYER_ID-1h-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 2nd Half Blocks Over/Under	Home Team - Over:
+blocks-home-2h-ou-over
+Away Team - Over:
+blocks-away-2h-ou-over
+Home Team - Under:
+blocks-home-2h-ou-under
+Away Team - Under:
+blocks-away-2h-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+2h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total 2nd Half Blocks Over/Under	Over:
+blocks-all-2h-ou-over
+Under:
+blocks-all-2h-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 2nd Half Blocks Over/Under	Over:
+blocks-ANY_PLAYER_ID-2h-ou-over
+Under:
+blocks-ANY_PLAYER_ID-2h-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 2nd Half Blocks Even/Odd	Home Team - Even:
+blocks-home-2h-eo-even
+Away Team - Even:
+blocks-away-2h-eo-even
+Home Team - Odd:
+blocks-home-2h-eo-odd
+Away Team - Odd:
+blocks-away-2h-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+2h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total 2nd Half Blocks Even/Odd	Even:
+blocks-all-2h-eo-even
+Odd:
+blocks-all-2h-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+2h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 2nd Half Blocks Even/Odd	Even:
+blocks-ANY_PLAYER_ID-2h-eo-even
+Odd:
+blocks-ANY_PLAYER_ID-2h-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Any 2nd Half Blocks Yes/No
+
+Team Anytime Blocks (2nd Half)	Home Team - Yes:
+blocks-home-2h-yn-yes
+Away Team - Yes:
+blocks-away-2h-yn-yes
+Home Team - No:
+blocks-home-2h-yn-no
+Away Team - No:
+blocks-away-2h-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+2h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Any 2nd Half Blocks Yes/No
+
+Anytime Blocks (2nd Half)	Yes:
+blocks-all-2h-yn-yes
+No:
+blocks-all-2h-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+2h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Any 2nd Half Blocks Yes/No
+
+Player Anytime Blocks (2nd Half)	Yes:
+blocks-ANY_PLAYER_ID-2h-yn-yes
+No:
+blocks-ANY_PLAYER_ID-2h-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 1st Quarter Blocks Over/Under	Home Team - Over:
+blocks-home-1q-ou-over
+Away Team - Over:
+blocks-away-1q-ou-over
+Home Team - Under:
+blocks-home-1q-ou-under
+Away Team - Under:
+blocks-away-1q-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+1q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 1st Quarter Blocks Over/Under	Over:
+blocks-all-1q-ou-over
+Under:
+blocks-all-1q-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+all	NBA
+WNBA
+Player 1st Quarter Blocks Over/Under	Over:
+blocks-ANY_PLAYER_ID-1q-ou-over
+Under:
+blocks-ANY_PLAYER_ID-1q-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 1st Quarter Blocks Even/Odd	Home Team - Even:
+blocks-home-1q-eo-even
+Away Team - Even:
+blocks-away-1q-eo-even
+Home Team - Odd:
+blocks-home-1q-eo-odd
+Away Team - Odd:
+blocks-away-1q-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+1q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 1st Quarter Blocks Even/Odd	Even:
+blocks-all-1q-eo-even
+Odd:
+blocks-all-1q-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+1q
+statEntityID:
+all	NBA
+WNBA
+Player 1st Quarter Blocks Even/Odd	Even:
+blocks-ANY_PLAYER_ID-1q-eo-even
+Odd:
+blocks-ANY_PLAYER_ID-1q-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 1st Quarter Blocks Yes/No
+
+Team Anytime Blocks (1st Quarter)	Home Team - Yes:
+blocks-home-1q-yn-yes
+Away Team - Yes:
+blocks-away-1q-yn-yes
+Home Team - No:
+blocks-home-1q-yn-no
+Away Team - No:
+blocks-away-1q-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+1q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 1st Quarter Blocks Yes/No
+
+Anytime Blocks (1st Quarter)	Yes:
+blocks-all-1q-yn-yes
+No:
+blocks-all-1q-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+1q
+statEntityID:
+all	NBA
+WNBA
+Player Any 1st Quarter Blocks Yes/No
+
+Player Anytime Blocks (1st Quarter)	Yes:
+blocks-ANY_PLAYER_ID-1q-yn-yes
+No:
+blocks-ANY_PLAYER_ID-1q-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 2nd Quarter Blocks Over/Under	Home Team - Over:
+blocks-home-2q-ou-over
+Away Team - Over:
+blocks-away-2q-ou-over
+Home Team - Under:
+blocks-home-2q-ou-under
+Away Team - Under:
+blocks-away-2q-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+2q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 2nd Quarter Blocks Over/Under	Over:
+blocks-all-2q-ou-over
+Under:
+blocks-all-2q-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+2q
+statEntityID:
+all	NBA
+WNBA
+Player 2nd Quarter Blocks Over/Under	Over:
+blocks-ANY_PLAYER_ID-2q-ou-over
+Under:
+blocks-ANY_PLAYER_ID-2q-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+2q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 2nd Quarter Blocks Even/Odd	Home Team - Even:
+blocks-home-2q-eo-even
+Away Team - Even:
+blocks-away-2q-eo-even
+Home Team - Odd:
+blocks-home-2q-eo-odd
+Away Team - Odd:
+blocks-away-2q-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+2q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 2nd Quarter Blocks Even/Odd	Even:
+blocks-all-2q-eo-even
+Odd:
+blocks-all-2q-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+2q
+statEntityID:
+all	NBA
+WNBA
+Player 2nd Quarter Blocks Even/Odd	Even:
+blocks-ANY_PLAYER_ID-2q-eo-even
+Odd:
+blocks-ANY_PLAYER_ID-2q-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+2q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 2nd Quarter Blocks Yes/No
+
+Team Anytime Blocks (2nd Quarter)	Home Team - Yes:
+blocks-home-2q-yn-yes
+Away Team - Yes:
+blocks-away-2q-yn-yes
+Home Team - No:
+blocks-home-2q-yn-no
+Away Team - No:
+blocks-away-2q-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+2q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 2nd Quarter Blocks Yes/No
+
+Anytime Blocks (2nd Quarter)	Yes:
+blocks-all-2q-yn-yes
+No:
+blocks-all-2q-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+2q
+statEntityID:
+all	NBA
+WNBA
+Player Any 2nd Quarter Blocks Yes/No
+
+Player Anytime Blocks (2nd Quarter)	Yes:
+blocks-ANY_PLAYER_ID-2q-yn-yes
+No:
+blocks-ANY_PLAYER_ID-2q-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+2q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 3rd Quarter Blocks Over/Under	Home Team - Over:
+blocks-home-3q-ou-over
+Away Team - Over:
+blocks-away-3q-ou-over
+Home Team - Under:
+blocks-home-3q-ou-under
+Away Team - Under:
+blocks-away-3q-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+3q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 3rd Quarter Blocks Over/Under	Over:
+blocks-all-3q-ou-over
+Under:
+blocks-all-3q-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+3q
+statEntityID:
+all	NBA
+WNBA
+Player 3rd Quarter Blocks Over/Under	Over:
+blocks-ANY_PLAYER_ID-3q-ou-over
+Under:
+blocks-ANY_PLAYER_ID-3q-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+3q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 3rd Quarter Blocks Even/Odd	Home Team - Even:
+blocks-home-3q-eo-even
+Away Team - Even:
+blocks-away-3q-eo-even
+Home Team - Odd:
+blocks-home-3q-eo-odd
+Away Team - Odd:
+blocks-away-3q-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+3q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 3rd Quarter Blocks Even/Odd	Even:
+blocks-all-3q-eo-even
+Odd:
+blocks-all-3q-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+3q
+statEntityID:
+all	NBA
+WNBA
+Player 3rd Quarter Blocks Even/Odd	Even:
+blocks-ANY_PLAYER_ID-3q-eo-even
+Odd:
+blocks-ANY_PLAYER_ID-3q-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+3q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 3rd Quarter Blocks Yes/No
+
+Team Anytime Blocks (3rd Quarter)	Home Team - Yes:
+blocks-home-3q-yn-yes
+Away Team - Yes:
+blocks-away-3q-yn-yes
+Home Team - No:
+blocks-home-3q-yn-no
+Away Team - No:
+blocks-away-3q-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+3q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 3rd Quarter Blocks Yes/No
+
+Anytime Blocks (3rd Quarter)	Yes:
+blocks-all-3q-yn-yes
+No:
+blocks-all-3q-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+3q
+statEntityID:
+all	NBA
+WNBA
+Player Any 3rd Quarter Blocks Yes/No
+
+Player Anytime Blocks (3rd Quarter)	Yes:
+blocks-ANY_PLAYER_ID-3q-yn-yes
+No:
+blocks-ANY_PLAYER_ID-3q-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+3q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 4th Quarter Blocks Over/Under	Home Team - Over:
+blocks-home-4q-ou-over
+Away Team - Over:
+blocks-away-4q-ou-over
+Home Team - Under:
+blocks-home-4q-ou-under
+Away Team - Under:
+blocks-away-4q-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+4q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 4th Quarter Blocks Over/Under	Over:
+blocks-all-4q-ou-over
+Under:
+blocks-all-4q-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+all	NBA
+WNBA
+Player 4th Quarter Blocks Over/Under	Over:
+blocks-ANY_PLAYER_ID-4q-ou-over
+Under:
+blocks-ANY_PLAYER_ID-4q-ou-under	statID:
+blocks
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 4th Quarter Blocks Even/Odd	Home Team - Even:
+blocks-home-4q-eo-even
+Away Team - Even:
+blocks-away-4q-eo-even
+Home Team - Odd:
+blocks-home-4q-eo-odd
+Away Team - Odd:
+blocks-away-4q-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+4q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 4th Quarter Blocks Even/Odd	Even:
+blocks-all-4q-eo-even
+Odd:
+blocks-all-4q-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+4q
+statEntityID:
+all	NBA
+WNBA
+Player 4th Quarter Blocks Even/Odd	Even:
+blocks-ANY_PLAYER_ID-4q-eo-even
+Odd:
+blocks-ANY_PLAYER_ID-4q-eo-odd	statID:
+blocks
+betTypeID:
+eo
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 4th Quarter Blocks Yes/No
+
+Team Anytime Blocks (4th Quarter)	Home Team - Yes:
+blocks-home-4q-yn-yes
+Away Team - Yes:
+blocks-away-4q-yn-yes
+Home Team - No:
+blocks-home-4q-yn-no
+Away Team - No:
+blocks-away-4q-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+4q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 4th Quarter Blocks Yes/No
+
+Anytime Blocks (4th Quarter)	Yes:
+blocks-all-4q-yn-yes
+No:
+blocks-all-4q-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+4q
+statEntityID:
+all	NBA
+WNBA
+Player Any 4th Quarter Blocks Yes/No
+
+Player Anytime Blocks (4th Quarter)	Yes:
+blocks-ANY_PLAYER_ID-4q-yn-yes
+No:
+blocks-ANY_PLAYER_ID-4q-yn-no	statID:
+blocks
+betTypeID:
+yn
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Steals Over/Under	Home Team - Over:
+steals-home-game-ou-over
+Away Team - Over:
+steals-away-game-ou-over
+Home Team - Under:
+steals-home-game-ou-under
+Away Team - Under:
+steals-away-game-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+game
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total Steals Over/Under	Over:
+steals-all-game-ou-over
+Under:
+steals-all-game-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Steals Over/Under	Over:
+steals-ANY_PLAYER_ID-game-ou-over
+Under:
+steals-ANY_PLAYER_ID-game-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Steals Even/Odd	Home Team - Even:
+steals-home-game-eo-even
+Away Team - Even:
+steals-away-game-eo-even
+Home Team - Odd:
+steals-home-game-eo-odd
+Away Team - Odd:
+steals-away-game-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+game
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total Steals Even/Odd	Even:
+steals-all-game-eo-even
+Odd:
+steals-all-game-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+game
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Steals Even/Odd	Even:
+steals-ANY_PLAYER_ID-game-eo-even
+Odd:
+steals-ANY_PLAYER_ID-game-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Any Steals Yes/No
+
+Team Anytime Steals	Home Team - Yes:
+steals-home-game-yn-yes
+Away Team - Yes:
+steals-away-game-yn-yes
+Home Team - No:
+steals-home-game-yn-no
+Away Team - No:
+steals-away-game-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+game
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Any Steals Yes/No
+
+Anytime Steals	Yes:
+steals-all-game-yn-yes
+No:
+steals-all-game-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+game
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Any Steals Yes/No
+
+Player Anytime Steals	Yes:
+steals-ANY_PLAYER_ID-game-yn-yes
+No:
+steals-ANY_PLAYER_ID-game-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 1st Half Steals Over/Under	Home Team - Over:
+steals-home-1h-ou-over
+Away Team - Over:
+steals-away-1h-ou-over
+Home Team - Under:
+steals-home-1h-ou-under
+Away Team - Under:
+steals-away-1h-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+1h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total 1st Half Steals Over/Under	Over:
+steals-all-1h-ou-over
+Under:
+steals-all-1h-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 1st Half Steals Over/Under	Over:
+steals-ANY_PLAYER_ID-1h-ou-over
+Under:
+steals-ANY_PLAYER_ID-1h-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 1st Half Steals Even/Odd	Home Team - Even:
+steals-home-1h-eo-even
+Away Team - Even:
+steals-away-1h-eo-even
+Home Team - Odd:
+steals-home-1h-eo-odd
+Away Team - Odd:
+steals-away-1h-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+1h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total 1st Half Steals Even/Odd	Even:
+steals-all-1h-eo-even
+Odd:
+steals-all-1h-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+1h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 1st Half Steals Even/Odd	Even:
+steals-ANY_PLAYER_ID-1h-eo-even
+Odd:
+steals-ANY_PLAYER_ID-1h-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Any 1st Half Steals Yes/No
+
+Team Anytime Steals (1st Half)	Home Team - Yes:
+steals-home-1h-yn-yes
+Away Team - Yes:
+steals-away-1h-yn-yes
+Home Team - No:
+steals-home-1h-yn-no
+Away Team - No:
+steals-away-1h-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+1h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Any 1st Half Steals Yes/No
+
+Anytime Steals (1st Half)	Yes:
+steals-all-1h-yn-yes
+No:
+steals-all-1h-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+1h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Any 1st Half Steals Yes/No
+
+Player Anytime Steals (1st Half)	Yes:
+steals-ANY_PLAYER_ID-1h-yn-yes
+No:
+steals-ANY_PLAYER_ID-1h-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 2nd Half Steals Over/Under	Home Team - Over:
+steals-home-2h-ou-over
+Away Team - Over:
+steals-away-2h-ou-over
+Home Team - Under:
+steals-home-2h-ou-under
+Away Team - Under:
+steals-away-2h-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+2h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total 2nd Half Steals Over/Under	Over:
+steals-all-2h-ou-over
+Under:
+steals-all-2h-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 2nd Half Steals Over/Under	Over:
+steals-ANY_PLAYER_ID-2h-ou-over
+Under:
+steals-ANY_PLAYER_ID-2h-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 2nd Half Steals Even/Odd	Home Team - Even:
+steals-home-2h-eo-even
+Away Team - Even:
+steals-away-2h-eo-even
+Home Team - Odd:
+steals-home-2h-eo-odd
+Away Team - Odd:
+steals-away-2h-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+2h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total 2nd Half Steals Even/Odd	Even:
+steals-all-2h-eo-even
+Odd:
+steals-all-2h-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+2h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 2nd Half Steals Even/Odd	Even:
+steals-ANY_PLAYER_ID-2h-eo-even
+Odd:
+steals-ANY_PLAYER_ID-2h-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Any 2nd Half Steals Yes/No
+
+Team Anytime Steals (2nd Half)	Home Team - Yes:
+steals-home-2h-yn-yes
+Away Team - Yes:
+steals-away-2h-yn-yes
+Home Team - No:
+steals-home-2h-yn-no
+Away Team - No:
+steals-away-2h-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+2h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Any 2nd Half Steals Yes/No
+
+Anytime Steals (2nd Half)	Yes:
+steals-all-2h-yn-yes
+No:
+steals-all-2h-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+2h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Any 2nd Half Steals Yes/No
+
+Player Anytime Steals (2nd Half)	Yes:
+steals-ANY_PLAYER_ID-2h-yn-yes
+No:
+steals-ANY_PLAYER_ID-2h-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 1st Quarter Steals Over/Under	Home Team - Over:
+steals-home-1q-ou-over
+Away Team - Over:
+steals-away-1q-ou-over
+Home Team - Under:
+steals-home-1q-ou-under
+Away Team - Under:
+steals-away-1q-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+1q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 1st Quarter Steals Over/Under	Over:
+steals-all-1q-ou-over
+Under:
+steals-all-1q-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+all	NBA
+WNBA
+Player 1st Quarter Steals Over/Under	Over:
+steals-ANY_PLAYER_ID-1q-ou-over
+Under:
+steals-ANY_PLAYER_ID-1q-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 1st Quarter Steals Even/Odd	Home Team - Even:
+steals-home-1q-eo-even
+Away Team - Even:
+steals-away-1q-eo-even
+Home Team - Odd:
+steals-home-1q-eo-odd
+Away Team - Odd:
+steals-away-1q-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+1q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 1st Quarter Steals Even/Odd	Even:
+steals-all-1q-eo-even
+Odd:
+steals-all-1q-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+1q
+statEntityID:
+all	NBA
+WNBA
+Player 1st Quarter Steals Even/Odd	Even:
+steals-ANY_PLAYER_ID-1q-eo-even
+Odd:
+steals-ANY_PLAYER_ID-1q-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 1st Quarter Steals Yes/No
+
+Team Anytime Steals (1st Quarter)	Home Team - Yes:
+steals-home-1q-yn-yes
+Away Team - Yes:
+steals-away-1q-yn-yes
+Home Team - No:
+steals-home-1q-yn-no
+Away Team - No:
+steals-away-1q-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+1q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 1st Quarter Steals Yes/No
+
+Anytime Steals (1st Quarter)	Yes:
+steals-all-1q-yn-yes
+No:
+steals-all-1q-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+1q
+statEntityID:
+all	NBA
+WNBA
+Player Any 1st Quarter Steals Yes/No
+
+Player Anytime Steals (1st Quarter)	Yes:
+steals-ANY_PLAYER_ID-1q-yn-yes
+No:
+steals-ANY_PLAYER_ID-1q-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 2nd Quarter Steals Over/Under	Home Team - Over:
+steals-home-2q-ou-over
+Away Team - Over:
+steals-away-2q-ou-over
+Home Team - Under:
+steals-home-2q-ou-under
+Away Team - Under:
+steals-away-2q-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+2q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 2nd Quarter Steals Over/Under	Over:
+steals-all-2q-ou-over
+Under:
+steals-all-2q-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+2q
+statEntityID:
+all	NBA
+WNBA
+Player 2nd Quarter Steals Over/Under	Over:
+steals-ANY_PLAYER_ID-2q-ou-over
+Under:
+steals-ANY_PLAYER_ID-2q-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+2q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 2nd Quarter Steals Even/Odd	Home Team - Even:
+steals-home-2q-eo-even
+Away Team - Even:
+steals-away-2q-eo-even
+Home Team - Odd:
+steals-home-2q-eo-odd
+Away Team - Odd:
+steals-away-2q-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+2q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 2nd Quarter Steals Even/Odd	Even:
+steals-all-2q-eo-even
+Odd:
+steals-all-2q-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+2q
+statEntityID:
+all	NBA
+WNBA
+Player 2nd Quarter Steals Even/Odd	Even:
+steals-ANY_PLAYER_ID-2q-eo-even
+Odd:
+steals-ANY_PLAYER_ID-2q-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+2q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 2nd Quarter Steals Yes/No
+
+Team Anytime Steals (2nd Quarter)	Home Team - Yes:
+steals-home-2q-yn-yes
+Away Team - Yes:
+steals-away-2q-yn-yes
+Home Team - No:
+steals-home-2q-yn-no
+Away Team - No:
+steals-away-2q-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+2q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 2nd Quarter Steals Yes/No
+
+Anytime Steals (2nd Quarter)	Yes:
+steals-all-2q-yn-yes
+No:
+steals-all-2q-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+2q
+statEntityID:
+all	NBA
+WNBA
+Player Any 2nd Quarter Steals Yes/No
+
+Player Anytime Steals (2nd Quarter)	Yes:
+steals-ANY_PLAYER_ID-2q-yn-yes
+No:
+steals-ANY_PLAYER_ID-2q-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+2q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 3rd Quarter Steals Over/Under	Home Team - Over:
+steals-home-3q-ou-over
+Away Team - Over:
+steals-away-3q-ou-over
+Home Team - Under:
+steals-home-3q-ou-under
+Away Team - Under:
+steals-away-3q-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+3q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 3rd Quarter Steals Over/Under	Over:
+steals-all-3q-ou-over
+Under:
+steals-all-3q-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+3q
+statEntityID:
+all	NBA
+WNBA
+Player 3rd Quarter Steals Over/Under	Over:
+steals-ANY_PLAYER_ID-3q-ou-over
+Under:
+steals-ANY_PLAYER_ID-3q-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+3q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 3rd Quarter Steals Even/Odd	Home Team - Even:
+steals-home-3q-eo-even
+Away Team - Even:
+steals-away-3q-eo-even
+Home Team - Odd:
+steals-home-3q-eo-odd
+Away Team - Odd:
+steals-away-3q-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+3q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 3rd Quarter Steals Even/Odd	Even:
+steals-all-3q-eo-even
+Odd:
+steals-all-3q-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+3q
+statEntityID:
+all	NBA
+WNBA
+Player 3rd Quarter Steals Even/Odd	Even:
+steals-ANY_PLAYER_ID-3q-eo-even
+Odd:
+steals-ANY_PLAYER_ID-3q-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+3q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 3rd Quarter Steals Yes/No
+
+Team Anytime Steals (3rd Quarter)	Home Team - Yes:
+steals-home-3q-yn-yes
+Away Team - Yes:
+steals-away-3q-yn-yes
+Home Team - No:
+steals-home-3q-yn-no
+Away Team - No:
+steals-away-3q-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+3q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 3rd Quarter Steals Yes/No
+
+Anytime Steals (3rd Quarter)	Yes:
+steals-all-3q-yn-yes
+No:
+steals-all-3q-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+3q
+statEntityID:
+all	NBA
+WNBA
+Player Any 3rd Quarter Steals Yes/No
+
+Player Anytime Steals (3rd Quarter)	Yes:
+steals-ANY_PLAYER_ID-3q-yn-yes
+No:
+steals-ANY_PLAYER_ID-3q-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+3q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 4th Quarter Steals Over/Under	Home Team - Over:
+steals-home-4q-ou-over
+Away Team - Over:
+steals-away-4q-ou-over
+Home Team - Under:
+steals-home-4q-ou-under
+Away Team - Under:
+steals-away-4q-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+4q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 4th Quarter Steals Over/Under	Over:
+steals-all-4q-ou-over
+Under:
+steals-all-4q-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+all	NBA
+WNBA
+Player 4th Quarter Steals Over/Under	Over:
+steals-ANY_PLAYER_ID-4q-ou-over
+Under:
+steals-ANY_PLAYER_ID-4q-ou-under	statID:
+steals
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 4th Quarter Steals Even/Odd	Home Team - Even:
+steals-home-4q-eo-even
+Away Team - Even:
+steals-away-4q-eo-even
+Home Team - Odd:
+steals-home-4q-eo-odd
+Away Team - Odd:
+steals-away-4q-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+4q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 4th Quarter Steals Even/Odd	Even:
+steals-all-4q-eo-even
+Odd:
+steals-all-4q-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+4q
+statEntityID:
+all	NBA
+WNBA
+Player 4th Quarter Steals Even/Odd	Even:
+steals-ANY_PLAYER_ID-4q-eo-even
+Odd:
+steals-ANY_PLAYER_ID-4q-eo-odd	statID:
+steals
+betTypeID:
+eo
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 4th Quarter Steals Yes/No
+
+Team Anytime Steals (4th Quarter)	Home Team - Yes:
+steals-home-4q-yn-yes
+Away Team - Yes:
+steals-away-4q-yn-yes
+Home Team - No:
+steals-home-4q-yn-no
+Away Team - No:
+steals-away-4q-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+4q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 4th Quarter Steals Yes/No
+
+Anytime Steals (4th Quarter)	Yes:
+steals-all-4q-yn-yes
+No:
+steals-all-4q-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+4q
+statEntityID:
+all	NBA
+WNBA
+Player Any 4th Quarter Steals Yes/No
+
+Player Anytime Steals (4th Quarter)	Yes:
+steals-ANY_PLAYER_ID-4q-yn-yes
+No:
+steals-ANY_PLAYER_ID-4q-yn-no	statID:
+steals
+betTypeID:
+yn
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Assists Over/Under	Home Team - Over:
+assists-home-game-ou-over
+Away Team - Over:
+assists-away-game-ou-over
+Home Team - Under:
+assists-home-game-ou-under
+Away Team - Under:
+assists-away-game-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+game
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total Assists Over/Under	Over:
+assists-all-game-ou-over
+Under:
+assists-all-game-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Assists Over/Under	Over:
+assists-ANY_PLAYER_ID-game-ou-over
+Under:
+assists-ANY_PLAYER_ID-game-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Assists Even/Odd	Home Team - Even:
+assists-home-game-eo-even
+Away Team - Even:
+assists-away-game-eo-even
+Home Team - Odd:
+assists-home-game-eo-odd
+Away Team - Odd:
+assists-away-game-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+game
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total Assists Even/Odd	Even:
+assists-all-game-eo-even
+Odd:
+assists-all-game-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+game
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Assists Even/Odd	Even:
+assists-ANY_PLAYER_ID-game-eo-even
+Odd:
+assists-ANY_PLAYER_ID-game-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Any Assists Yes/No
+
+Team Anytime Assists	Home Team - Yes:
+assists-home-game-yn-yes
+Away Team - Yes:
+assists-away-game-yn-yes
+Home Team - No:
+assists-home-game-yn-no
+Away Team - No:
+assists-away-game-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+game
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Any Assists Yes/No
+
+Anytime Assists	Yes:
+assists-all-game-yn-yes
+No:
+assists-all-game-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+game
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Any Assists Yes/No
+
+Player Anytime Assists	Yes:
+assists-ANY_PLAYER_ID-game-yn-yes
+No:
+assists-ANY_PLAYER_ID-game-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 1st Half Assists Over/Under	Home Team - Over:
+assists-home-1h-ou-over
+Away Team - Over:
+assists-away-1h-ou-over
+Home Team - Under:
+assists-home-1h-ou-under
+Away Team - Under:
+assists-away-1h-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+1h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total 1st Half Assists Over/Under	Over:
+assists-all-1h-ou-over
+Under:
+assists-all-1h-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 1st Half Assists Over/Under	Over:
+assists-ANY_PLAYER_ID-1h-ou-over
+Under:
+assists-ANY_PLAYER_ID-1h-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 1st Half Assists Even/Odd	Home Team - Even:
+assists-home-1h-eo-even
+Away Team - Even:
+assists-away-1h-eo-even
+Home Team - Odd:
+assists-home-1h-eo-odd
+Away Team - Odd:
+assists-away-1h-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+1h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total 1st Half Assists Even/Odd	Even:
+assists-all-1h-eo-even
+Odd:
+assists-all-1h-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+1h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 1st Half Assists Even/Odd	Even:
+assists-ANY_PLAYER_ID-1h-eo-even
+Odd:
+assists-ANY_PLAYER_ID-1h-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Any 1st Half Assists Yes/No
+
+Team Anytime Assists (1st Half)	Home Team - Yes:
+assists-home-1h-yn-yes
+Away Team - Yes:
+assists-away-1h-yn-yes
+Home Team - No:
+assists-home-1h-yn-no
+Away Team - No:
+assists-away-1h-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+1h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Any 1st Half Assists Yes/No
+
+Anytime Assists (1st Half)	Yes:
+assists-all-1h-yn-yes
+No:
+assists-all-1h-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+1h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Any 1st Half Assists Yes/No
+
+Player Anytime Assists (1st Half)	Yes:
+assists-ANY_PLAYER_ID-1h-yn-yes
+No:
+assists-ANY_PLAYER_ID-1h-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 2nd Half Assists Over/Under	Home Team - Over:
+assists-home-2h-ou-over
+Away Team - Over:
+assists-away-2h-ou-over
+Home Team - Under:
+assists-home-2h-ou-under
+Away Team - Under:
+assists-away-2h-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+2h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total 2nd Half Assists Over/Under	Over:
+assists-all-2h-ou-over
+Under:
+assists-all-2h-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 2nd Half Assists Over/Under	Over:
+assists-ANY_PLAYER_ID-2h-ou-over
+Under:
+assists-ANY_PLAYER_ID-2h-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 2nd Half Assists Even/Odd	Home Team - Even:
+assists-home-2h-eo-even
+Away Team - Even:
+assists-away-2h-eo-even
+Home Team - Odd:
+assists-home-2h-eo-odd
+Away Team - Odd:
+assists-away-2h-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+2h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Total 2nd Half Assists Even/Odd	Even:
+assists-all-2h-eo-even
+Odd:
+assists-all-2h-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+2h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player 2nd Half Assists Even/Odd	Even:
+assists-ANY_PLAYER_ID-2h-eo-even
+Odd:
+assists-ANY_PLAYER_ID-2h-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team Any 2nd Half Assists Yes/No
+
+Team Anytime Assists (2nd Half)	Home Team - Yes:
+assists-home-2h-yn-yes
+Away Team - Yes:
+assists-away-2h-yn-yes
+Home Team - No:
+assists-home-2h-yn-no
+Away Team - No:
+assists-away-2h-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+2h
+statEntityIDs:
+home, away	NBA
+NCAAB
+WNBA
+Any 2nd Half Assists Yes/No
+
+Anytime Assists (2nd Half)	Yes:
+assists-all-2h-yn-yes
+No:
+assists-all-2h-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+2h
+statEntityID:
+all	NBA
+NCAAB
+WNBA
+Player Any 2nd Half Assists Yes/No
+
+Player Anytime Assists (2nd Half)	Yes:
+assists-ANY_PLAYER_ID-2h-yn-yes
+No:
+assists-ANY_PLAYER_ID-2h-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Team 1st Quarter Assists Over/Under	Home Team - Over:
+assists-home-1q-ou-over
+Away Team - Over:
+assists-away-1q-ou-over
+Home Team - Under:
+assists-home-1q-ou-under
+Away Team - Under:
+assists-away-1q-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+1q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 1st Quarter Assists Over/Under	Over:
+assists-all-1q-ou-over
+Under:
+assists-all-1q-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+all	NBA
+WNBA
+Player 1st Quarter Assists Over/Under	Over:
+assists-ANY_PLAYER_ID-1q-ou-over
+Under:
+assists-ANY_PLAYER_ID-1q-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 1st Quarter Assists Even/Odd	Home Team - Even:
+assists-home-1q-eo-even
+Away Team - Even:
+assists-away-1q-eo-even
+Home Team - Odd:
+assists-home-1q-eo-odd
+Away Team - Odd:
+assists-away-1q-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+1q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 1st Quarter Assists Even/Odd	Even:
+assists-all-1q-eo-even
+Odd:
+assists-all-1q-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+1q
+statEntityID:
+all	NBA
+WNBA
+Player 1st Quarter Assists Even/Odd	Even:
+assists-ANY_PLAYER_ID-1q-eo-even
+Odd:
+assists-ANY_PLAYER_ID-1q-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 1st Quarter Assists Yes/No
+
+Team Anytime Assists (1st Quarter)	Home Team - Yes:
+assists-home-1q-yn-yes
+Away Team - Yes:
+assists-away-1q-yn-yes
+Home Team - No:
+assists-home-1q-yn-no
+Away Team - No:
+assists-away-1q-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+1q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 1st Quarter Assists Yes/No
+
+Anytime Assists (1st Quarter)	Yes:
+assists-all-1q-yn-yes
+No:
+assists-all-1q-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+1q
+statEntityID:
+all	NBA
+WNBA
+Player Any 1st Quarter Assists Yes/No
+
+Player Anytime Assists (1st Quarter)	Yes:
+assists-ANY_PLAYER_ID-1q-yn-yes
+No:
+assists-ANY_PLAYER_ID-1q-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 2nd Quarter Assists Over/Under	Home Team - Over:
+assists-home-2q-ou-over
+Away Team - Over:
+assists-away-2q-ou-over
+Home Team - Under:
+assists-home-2q-ou-under
+Away Team - Under:
+assists-away-2q-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+2q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 2nd Quarter Assists Over/Under	Over:
+assists-all-2q-ou-over
+Under:
+assists-all-2q-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+2q
+statEntityID:
+all	NBA
+WNBA
+Player 2nd Quarter Assists Over/Under	Over:
+assists-ANY_PLAYER_ID-2q-ou-over
+Under:
+assists-ANY_PLAYER_ID-2q-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+2q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 2nd Quarter Assists Even/Odd	Home Team - Even:
+assists-home-2q-eo-even
+Away Team - Even:
+assists-away-2q-eo-even
+Home Team - Odd:
+assists-home-2q-eo-odd
+Away Team - Odd:
+assists-away-2q-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+2q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 2nd Quarter Assists Even/Odd	Even:
+assists-all-2q-eo-even
+Odd:
+assists-all-2q-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+2q
+statEntityID:
+all	NBA
+WNBA
+Player 2nd Quarter Assists Even/Odd	Even:
+assists-ANY_PLAYER_ID-2q-eo-even
+Odd:
+assists-ANY_PLAYER_ID-2q-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+2q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 2nd Quarter Assists Yes/No
+
+Team Anytime Assists (2nd Quarter)	Home Team - Yes:
+assists-home-2q-yn-yes
+Away Team - Yes:
+assists-away-2q-yn-yes
+Home Team - No:
+assists-home-2q-yn-no
+Away Team - No:
+assists-away-2q-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+2q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 2nd Quarter Assists Yes/No
+
+Anytime Assists (2nd Quarter)	Yes:
+assists-all-2q-yn-yes
+No:
+assists-all-2q-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+2q
+statEntityID:
+all	NBA
+WNBA
+Player Any 2nd Quarter Assists Yes/No
+
+Player Anytime Assists (2nd Quarter)	Yes:
+assists-ANY_PLAYER_ID-2q-yn-yes
+No:
+assists-ANY_PLAYER_ID-2q-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+2q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 3rd Quarter Assists Over/Under	Home Team - Over:
+assists-home-3q-ou-over
+Away Team - Over:
+assists-away-3q-ou-over
+Home Team - Under:
+assists-home-3q-ou-under
+Away Team - Under:
+assists-away-3q-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+3q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 3rd Quarter Assists Over/Under	Over:
+assists-all-3q-ou-over
+Under:
+assists-all-3q-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+3q
+statEntityID:
+all	NBA
+WNBA
+Player 3rd Quarter Assists Over/Under	Over:
+assists-ANY_PLAYER_ID-3q-ou-over
+Under:
+assists-ANY_PLAYER_ID-3q-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+3q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 3rd Quarter Assists Even/Odd	Home Team - Even:
+assists-home-3q-eo-even
+Away Team - Even:
+assists-away-3q-eo-even
+Home Team - Odd:
+assists-home-3q-eo-odd
+Away Team - Odd:
+assists-away-3q-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+3q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 3rd Quarter Assists Even/Odd	Even:
+assists-all-3q-eo-even
+Odd:
+assists-all-3q-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+3q
+statEntityID:
+all	NBA
+WNBA
+Player 3rd Quarter Assists Even/Odd	Even:
+assists-ANY_PLAYER_ID-3q-eo-even
+Odd:
+assists-ANY_PLAYER_ID-3q-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+3q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 3rd Quarter Assists Yes/No
+
+Team Anytime Assists (3rd Quarter)	Home Team - Yes:
+assists-home-3q-yn-yes
+Away Team - Yes:
+assists-away-3q-yn-yes
+Home Team - No:
+assists-home-3q-yn-no
+Away Team - No:
+assists-away-3q-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+3q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 3rd Quarter Assists Yes/No
+
+Anytime Assists (3rd Quarter)	Yes:
+assists-all-3q-yn-yes
+No:
+assists-all-3q-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+3q
+statEntityID:
+all	NBA
+WNBA
+Player Any 3rd Quarter Assists Yes/No
+
+Player Anytime Assists (3rd Quarter)	Yes:
+assists-ANY_PLAYER_ID-3q-yn-yes
+No:
+assists-ANY_PLAYER_ID-3q-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+3q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 4th Quarter Assists Over/Under	Home Team - Over:
+assists-home-4q-ou-over
+Away Team - Over:
+assists-away-4q-ou-over
+Home Team - Under:
+assists-home-4q-ou-under
+Away Team - Under:
+assists-away-4q-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+4q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 4th Quarter Assists Over/Under	Over:
+assists-all-4q-ou-over
+Under:
+assists-all-4q-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+all	NBA
+WNBA
+Player 4th Quarter Assists Over/Under	Over:
+assists-ANY_PLAYER_ID-4q-ou-over
+Under:
+assists-ANY_PLAYER_ID-4q-ou-under	statID:
+assists
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team 4th Quarter Assists Even/Odd	Home Team - Even:
+assists-home-4q-eo-even
+Away Team - Even:
+assists-away-4q-eo-even
+Home Team - Odd:
+assists-home-4q-eo-odd
+Away Team - Odd:
+assists-away-4q-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+4q
+statEntityIDs:
+home, away	NBA
+WNBA
+Total 4th Quarter Assists Even/Odd	Even:
+assists-all-4q-eo-even
+Odd:
+assists-all-4q-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+4q
+statEntityID:
+all	NBA
+WNBA
+Player 4th Quarter Assists Even/Odd	Even:
+assists-ANY_PLAYER_ID-4q-eo-even
+Odd:
+assists-ANY_PLAYER_ID-4q-eo-odd	statID:
+assists
+betTypeID:
+eo
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Team Any 4th Quarter Assists Yes/No
+
+Team Anytime Assists (4th Quarter)	Home Team - Yes:
+assists-home-4q-yn-yes
+Away Team - Yes:
+assists-away-4q-yn-yes
+Home Team - No:
+assists-home-4q-yn-no
+Away Team - No:
+assists-away-4q-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+4q
+statEntityIDs:
+home, away	NBA
+WNBA
+Any 4th Quarter Assists Yes/No
+
+Anytime Assists (4th Quarter)	Yes:
+assists-all-4q-yn-yes
+No:
+assists-all-4q-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+4q
+statEntityID:
+all	NBA
+WNBA
+Player Any 4th Quarter Assists Yes/No
+
+Player Anytime Assists (4th Quarter)	Yes:
+assists-ANY_PLAYER_ID-4q-yn-yes
+No:
+assists-ANY_PLAYER_ID-4q-yn-no	statID:
+assists
+betTypeID:
+yn
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player Rebounds Over/Under	Over:
+rebounds-ANY_PLAYER_ID-game-ou-over
+Under:
+rebounds-ANY_PLAYER_ID-game-ou-under	statID:
+rebounds
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player 1st Half Rebounds Over/Under	Over:
+rebounds-ANY_PLAYER_ID-1h-ou-over
+Under:
+rebounds-ANY_PLAYER_ID-1h-ou-under	statID:
+rebounds
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 2nd Half Rebounds Over/Under	Over:
+rebounds-ANY_PLAYER_ID-2h-ou-over
+Under:
+rebounds-ANY_PLAYER_ID-2h-ou-under	statID:
+rebounds
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 1st Quarter Rebounds Over/Under	Over:
+rebounds-ANY_PLAYER_ID-1q-ou-over
+Under:
+rebounds-ANY_PLAYER_ID-1q-ou-under	statID:
+rebounds
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 4th Quarter Rebounds Over/Under	Over:
+rebounds-ANY_PLAYER_ID-4q-ou-over
+Under:
+rebounds-ANY_PLAYER_ID-4q-ou-under	statID:
+rebounds
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player Turnovers Over/Under	Over:
+turnovers-ANY_PLAYER_ID-game-ou-over
+Under:
+turnovers-ANY_PLAYER_ID-game-ou-under	statID:
+turnovers
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player 1st Half Turnovers Over/Under	Over:
+turnovers-ANY_PLAYER_ID-1h-ou-over
+Under:
+turnovers-ANY_PLAYER_ID-1h-ou-under	statID:
+turnovers
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 2nd Half Turnovers Over/Under	Over:
+turnovers-ANY_PLAYER_ID-2h-ou-over
+Under:
+turnovers-ANY_PLAYER_ID-2h-ou-under	statID:
+turnovers
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 1st Quarter Turnovers Over/Under	Over:
+turnovers-ANY_PLAYER_ID-1q-ou-over
+Under:
+turnovers-ANY_PLAYER_ID-1q-ou-under	statID:
+turnovers
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+Player 4th Quarter Turnovers Over/Under	Over:
+turnovers-ANY_PLAYER_ID-4q-ou-over
+Under:
+turnovers-ANY_PLAYER_ID-4q-ou-under	statID:
+turnovers
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player Fouls Committed Over/Under	Over:
+fouls-ANY_PLAYER_ID-game-ou-over
+Under:
+fouls-ANY_PLAYER_ID-game-ou-under	statID:
+fouls
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player 1st Half Fouls Committed Over/Under	Over:
+fouls-ANY_PLAYER_ID-1h-ou-over
+Under:
+fouls-ANY_PLAYER_ID-1h-ou-under	statID:
+fouls
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 2nd Half Fouls Committed Over/Under	Over:
+fouls-ANY_PLAYER_ID-2h-ou-over
+Under:
+fouls-ANY_PLAYER_ID-2h-ou-under	statID:
+fouls
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 1st Quarter Fouls Committed Over/Under	Over:
+fouls-ANY_PLAYER_ID-1q-ou-over
+Under:
+fouls-ANY_PLAYER_ID-1q-ou-under	statID:
+fouls
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+Player 4th Quarter Fouls Committed Over/Under	Over:
+fouls-ANY_PLAYER_ID-4q-ou-over
+Under:
+fouls-ANY_PLAYER_ID-4q-ou-under	statID:
+fouls
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player Field Goals Made Over/Under	Over:
+fieldGoalsMade-ANY_PLAYER_ID-game-ou-over
+Under:
+fieldGoalsMade-ANY_PLAYER_ID-game-ou-under	statID:
+fieldGoalsMade
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player 1st Half Field Goals Made Over/Under	Over:
+fieldGoalsMade-ANY_PLAYER_ID-1h-ou-over
+Under:
+fieldGoalsMade-ANY_PLAYER_ID-1h-ou-under	statID:
+fieldGoalsMade
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 2nd Half Field Goals Made Over/Under	Over:
+fieldGoalsMade-ANY_PLAYER_ID-2h-ou-over
+Under:
+fieldGoalsMade-ANY_PLAYER_ID-2h-ou-under	statID:
+fieldGoalsMade
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 1st Quarter Field Goals Made Over/Under	Over:
+fieldGoalsMade-ANY_PLAYER_ID-1q-ou-over
+Under:
+fieldGoalsMade-ANY_PLAYER_ID-1q-ou-under	statID:
+fieldGoalsMade
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+Player 4th Quarter Field Goals Made Over/Under	Over:
+fieldGoalsMade-ANY_PLAYER_ID-4q-ou-over
+Under:
+fieldGoalsMade-ANY_PLAYER_ID-4q-ou-under	statID:
+fieldGoalsMade
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player Three Pointers Made Over/Under	Over:
+threePointersMade-ANY_PLAYER_ID-game-ou-over
+Under:
+threePointersMade-ANY_PLAYER_ID-game-ou-under	statID:
+threePointersMade
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player 1st Half Three Pointers Made Over/Under	Over:
+threePointersMade-ANY_PLAYER_ID-1h-ou-over
+Under:
+threePointersMade-ANY_PLAYER_ID-1h-ou-under	statID:
+threePointersMade
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 2nd Half Three Pointers Made Over/Under	Over:
+threePointersMade-ANY_PLAYER_ID-2h-ou-over
+Under:
+threePointersMade-ANY_PLAYER_ID-2h-ou-under	statID:
+threePointersMade
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 1st Quarter Three Pointers Made Over/Under	Over:
+threePointersMade-ANY_PLAYER_ID-1q-ou-over
+Under:
+threePointersMade-ANY_PLAYER_ID-1q-ou-under	statID:
+threePointersMade
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+Player 4th Quarter Three Pointers Made Over/Under	Over:
+threePointersMade-ANY_PLAYER_ID-4q-ou-over
+Under:
+threePointersMade-ANY_PLAYER_ID-4q-ou-under	statID:
+threePointersMade
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player Free Throws Made Over/Under	Over:
+freeThrowsMade-ANY_PLAYER_ID-game-ou-over
+Under:
+freeThrowsMade-ANY_PLAYER_ID-game-ou-under	statID:
+freeThrowsMade
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player Free Throws Attempted Over/Under	Over:
+freeThrowsAttempted-ANY_PLAYER_ID-game-ou-over
+Under:
+freeThrowsAttempted-ANY_PLAYER_ID-game-ou-under	statID:
+freeThrowsAttempted
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player Points + Rebounds + Assists Over/Under	Over:
+points+rebounds+assists-ANY_PLAYER_ID-game-ou-over
+Under:
+points+rebounds+assists-ANY_PLAYER_ID-game-ou-under	statID:
+points+rebounds+assists
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player 1st Half Points + Rebounds + Assists Over/Under	Over:
+points+rebounds+assists-ANY_PLAYER_ID-1h-ou-over
+Under:
+points+rebounds+assists-ANY_PLAYER_ID-1h-ou-under	statID:
+points+rebounds+assists
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 2nd Half Points + Rebounds + Assists Over/Under	Over:
+points+rebounds+assists-ANY_PLAYER_ID-2h-ou-over
+Under:
+points+rebounds+assists-ANY_PLAYER_ID-2h-ou-under	statID:
+points+rebounds+assists
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 1st Quarter Points + Rebounds + Assists Over/Under	Over:
+points+rebounds+assists-ANY_PLAYER_ID-1q-ou-over
+Under:
+points+rebounds+assists-ANY_PLAYER_ID-1q-ou-under	statID:
+points+rebounds+assists
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+Player 4th Quarter Points + Rebounds + Assists Over/Under	Over:
+points+rebounds+assists-ANY_PLAYER_ID-4q-ou-over
+Under:
+points+rebounds+assists-ANY_PLAYER_ID-4q-ou-under	statID:
+points+rebounds+assists
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player Points + Rebounds Over/Under	Over:
+points+rebounds-ANY_PLAYER_ID-game-ou-over
+Under:
+points+rebounds-ANY_PLAYER_ID-game-ou-under	statID:
+points+rebounds
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player 1st Half Points + Rebounds Over/Under	Over:
+points+rebounds-ANY_PLAYER_ID-1h-ou-over
+Under:
+points+rebounds-ANY_PLAYER_ID-1h-ou-under	statID:
+points+rebounds
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 2nd Half Points + Rebounds Over/Under	Over:
+points+rebounds-ANY_PLAYER_ID-2h-ou-over
+Under:
+points+rebounds-ANY_PLAYER_ID-2h-ou-under	statID:
+points+rebounds
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 1st Quarter Points + Rebounds Over/Under	Over:
+points+rebounds-ANY_PLAYER_ID-1q-ou-over
+Under:
+points+rebounds-ANY_PLAYER_ID-1q-ou-under	statID:
+points+rebounds
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+Player 4th Quarter Points + Rebounds Over/Under	Over:
+points+rebounds-ANY_PLAYER_ID-4q-ou-over
+Under:
+points+rebounds-ANY_PLAYER_ID-4q-ou-under	statID:
+points+rebounds
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player Points + Assists Over/Under	Over:
+points+assists-ANY_PLAYER_ID-game-ou-over
+Under:
+points+assists-ANY_PLAYER_ID-game-ou-under	statID:
+points+assists
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player 1st Half Points + Assists Over/Under	Over:
+points+assists-ANY_PLAYER_ID-1h-ou-over
+Under:
+points+assists-ANY_PLAYER_ID-1h-ou-under	statID:
+points+assists
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 2nd Half Points + Assists Over/Under	Over:
+points+assists-ANY_PLAYER_ID-2h-ou-over
+Under:
+points+assists-ANY_PLAYER_ID-2h-ou-under	statID:
+points+assists
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 1st Quarter Points + Assists Over/Under	Over:
+points+assists-ANY_PLAYER_ID-1q-ou-over
+Under:
+points+assists-ANY_PLAYER_ID-1q-ou-under	statID:
+points+assists
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+Player 4th Quarter Points + Assists Over/Under	Over:
+points+assists-ANY_PLAYER_ID-4q-ou-over
+Under:
+points+assists-ANY_PLAYER_ID-4q-ou-under	statID:
+points+assists
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player Rebounds + Assists Over/Under	Over:
+rebounds+assists-ANY_PLAYER_ID-game-ou-over
+Under:
+rebounds+assists-ANY_PLAYER_ID-game-ou-under	statID:
+rebounds+assists
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player 1st Half Rebounds + Assists Over/Under	Over:
+rebounds+assists-ANY_PLAYER_ID-1h-ou-over
+Under:
+rebounds+assists-ANY_PLAYER_ID-1h-ou-under	statID:
+rebounds+assists
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 2nd Half Rebounds + Assists Over/Under	Over:
+rebounds+assists-ANY_PLAYER_ID-2h-ou-over
+Under:
+rebounds+assists-ANY_PLAYER_ID-2h-ou-under	statID:
+rebounds+assists
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 1st Quarter Rebounds + Assists Over/Under	Over:
+rebounds+assists-ANY_PLAYER_ID-1q-ou-over
+Under:
+rebounds+assists-ANY_PLAYER_ID-1q-ou-under	statID:
+rebounds+assists
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+Player 4th Quarter Rebounds + Assists Over/Under	Over:
+rebounds+assists-ANY_PLAYER_ID-4q-ou-over
+Under:
+rebounds+assists-ANY_PLAYER_ID-4q-ou-under	statID:
+rebounds+assists
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player Blocks + Steals Over/Under	Over:
+blocks+steals-ANY_PLAYER_ID-game-ou-over
+Under:
+blocks+steals-ANY_PLAYER_ID-game-ou-under	statID:
+blocks+steals
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player Any Double-Double Yes/No
+
+Player Anytime Double-Double	Yes:
+doubleDouble-ANY_PLAYER_ID-game-yn-yes
+No:
+doubleDouble-ANY_PLAYER_ID-game-yn-no	statID:
+doubleDouble
+betTypeID:
+yn
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player Any Triple-Double Yes/No
+
+Player Anytime Triple-Double	Yes:
+tripleDouble-ANY_PLAYER_ID-game-yn-yes
+No:
+tripleDouble-ANY_PLAYER_ID-game-yn-no	statID:
+tripleDouble
+betTypeID:
+yn
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player To Record First Basket Yes/No
+
+Player First Basket	Yes:
+firstBasket-ANY_PLAYER_ID-game-yn-yes
+No:
+firstBasket-ANY_PLAYER_ID-game-yn-no	statID:
+firstBasket
+betTypeID:
+yn
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player To Record First Score Yes/No
+
+Player First Score	Yes:
+firstToScore-ANY_PLAYER_ID-game-yn-yes
+No:
+firstToScore-ANY_PLAYER_ID-game-yn-no	statID:
+firstToScore
+betTypeID:
+yn
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player Minutes Played Over/Under	Over:
+minutesPlayed-ANY_PLAYER_ID-game-ou-over
+Under:
+minutesPlayed-ANY_PLAYER_ID-game-ou-under	statID:
+minutesPlayed
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player 1st Half Minutes Played Over/Under	Over:
+minutesPlayed-ANY_PLAYER_ID-1h-ou-over
+Under:
+minutesPlayed-ANY_PLAYER_ID-1h-ou-under	statID:
+minutesPlayed
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 2nd Half Minutes Played Over/Under	Over:
+minutesPlayed-ANY_PLAYER_ID-2h-ou-over
+Under:
+minutesPlayed-ANY_PLAYER_ID-2h-ou-under	statID:
+minutesPlayed
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 1st Quarter Minutes Played Over/Under	Over:
+minutesPlayed-ANY_PLAYER_ID-1q-ou-over
+Under:
+minutesPlayed-ANY_PLAYER_ID-1q-ou-under	statID:
+minutesPlayed
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+Player 4th Quarter Minutes Played Over/Under	Over:
+minutesPlayed-ANY_PLAYER_ID-4q-ou-over
+Under:
+minutesPlayed-ANY_PLAYER_ID-4q-ou-under	statID:
+minutesPlayed
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player Fantasy Score Over/Under	Over:
+fantasyScore-ANY_PLAYER_ID-game-ou-over
+Under:
+fantasyScore-ANY_PLAYER_ID-game-ou-under	statID:
+fantasyScore
+betTypeID:
+ou
+periodID:
+game
+statEntityID:
+ANY_PLAYER_ID	NBA
+NCAAB
+WNBA
+Player 1st Half Fantasy Score Over/Under	Over:
+fantasyScore-ANY_PLAYER_ID-1h-ou-over
+Under:
+fantasyScore-ANY_PLAYER_ID-1h-ou-under	statID:
+fantasyScore
+betTypeID:
+ou
+periodID:
+1h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 2nd Half Fantasy Score Over/Under	Over:
+fantasyScore-ANY_PLAYER_ID-2h-ou-over
+Under:
+fantasyScore-ANY_PLAYER_ID-2h-ou-under	statID:
+fantasyScore
+betTypeID:
+ou
+periodID:
+2h
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
+Player 1st Quarter Fantasy Score Over/Under	Over:
+fantasyScore-ANY_PLAYER_ID-1q-ou-over
+Under:
+fantasyScore-ANY_PLAYER_ID-1q-ou-under	statID:
+fantasyScore
+betTypeID:
+ou
+periodID:
+1q
+statEntityID:
+ANY_PLAYER_ID	NBA
+Player 4th Quarter Fantasy Score Over/Under	Over:
+fantasyScore-ANY_PLAYER_ID-4q-ou-over
+Under:
+fantasyScore-ANY_PLAYER_ID-4q-ou-under	statID:
+fantasyScore
+betTypeID:
+ou
+periodID:
+4q
+statEntityID:
+ANY_PLAYER_ID	NBA
+WNBA
