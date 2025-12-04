@@ -1,0 +1,1250 @@
+GET sports
+
+Allows users to retrieve a list of sports available in the system.
+Endpoint
+
+GET /v4/sports
+
+Request Parameters
+
+    language (string) — (Optional) The language that the sportName will be returned in.
+
+Example Request
+
+GET /v4/sports?language=en
+
+Example Response
+
+[
+  {
+    "sportId": 10,
+    "slug": "soccer",
+    "sportName": "Soccer"
+  },
+  {
+    "sportId": 11,
+    "slug": "basketball",
+    "sportName": "Basketball"
+  }
+]
+
+The response will have a status code 200 indicating that the request was successful. If there are no sports available, the array may be empty.
+Response (200 OK)
+
+On a successful request, the server responds with a status code 200 and returns a JSON array containing the list of sports.
+
+Each object in the array contains the following fields:
+
+    sportId (number) — A unique identifier for the sport. This is the value you should use when sending the sport parameter to any other endpoints.
+    slug (string) — A URL-friendly version of the sport's name.
+    sportName (string) — The sport name.
+
+Notes
+
+    Endpoint cooldown: 1000ms
+	
+
+GET bookmakers
+
+Retrieves a list of bookmakers available in the system.
+Endpoint
+
+GET /v4/bookmakers
+
+Sample Response
+
+[
+  {
+    "bookmakerName": "188BET",
+    "slug": "188bet",
+    "liveOdds": false,
+    "cloneOf": null
+  },
+  {
+    "bookmakerName": "18Bet",
+    "slug": "18bet",
+    "liveOdds": null,
+    "cloneOf": null
+  }
+]
+
+Response (200 OK)
+
+On a successful request, the server responds with a status code 200 and returns a JSON array containing details about each bookmaker. Each object in the array contains the following fields:
+
+    bookmakerName (string) — The name of the bookmaker.
+    slug (string) — A URL-friendly version of the bookmaker's name. This is the value you should use when sending a bookmaker parameter to any other endpoints.
+    liveOdds (boolean|null) — Current live odds offered by the bookmaker.
+    cloneOf (string|null) — Name of the bookmaker this bookmaker is a clone of.
+
+Notes
+
+    Endpoint cooldown: 1000ms
+    The response will contain an array of bookmakers, and if no bookmakers are available, the array will be empty.
+    Ensure that you handle the case where liveOdds may be null, indicating that live odds are not currently available for that bookmaker.
+
+
+GET fixtures
+
+Retrieves a list of fixtures based on the specified parameters such as tournament ID, sport ID, participant ID, date range, and language.
+Endpoint
+
+GET /v4/fixtures
+
+Request
+Parameters
+
+    tournamentId (number) — The unique identifier for the tournament. This ID must correspond to an existing tournament.
+    sportId (number) — The unique identifier for the sport. This ID must correspond to an existing sport.
+    participantId (number) — The unique identifier for the participant. This ID must correspond to an existing participant.
+    from (string) — The start date and time for the fixtures in ISO 8601 format (e.g., YYYY-MM-DDTHH:MM:SSZ)
+    to (string) — The end date and time for the fixtures in ISO 8601 format (e.g., YYYY-MM-DDTHH:MM:SSZ)
+    language (a2) — (Optional) The language in which the tournament information should be returned. By default, the value is en for English
+    statusId (number: 0,1,2,3) — The statusId that the returned fixtures must have (0: Not yet started, 1: Live, 2: Finished, 3: Cancelled).
+    hasOdds (boolean) — Whether the fixture has odds available.
+
+Conditions
+
+    tournamentId: Can be the only parameter provided.
+    participantId: Can be the only parameter provided.
+    sportId: Must be accompanied by any of:
+        tournamentId
+        participantId
+        Both to and from, where both times are under 10 days apart.
+    to and from:
+        If tournamentId or participantId are provided, to and from aren't mandatory and providing only one is accepted.
+        If only to and from are provided, they must be under 48 hours apart.
+
+Example Request
+
+GET /v4/fixtures?sportId=10&from=2025-07-14T00:00:00Z&to=2025-07-21T00:00:00Z&hasOdds=true
+
+Example Response
+
+[
+  {
+    "fixtureId": "id1000015561098461",
+    "participant1Id": 3209,
+    "participant2Id": 3210,
+    "providerId": 61098461,
+    "seasonId": 127421,
+    "sportId": 10,
+    "startTime": "2025-07-21T00:00:00.000Z",
+    "statusId": 2,
+    "tournamentId": 155,
+    "trueEndTime": "2025-07-21T01:58:12.073Z",
+    "trueStartTime": "2025-07-21T00:00:02.751Z",
+    "updatedAt": "2025-07-21T01:58:12.073Z",
+    "hasOdds": true,
+    "externalProviders": {
+      "betradarId": 61098461,
+      "sofascoreId": 14069376,
+      "betgeniusId": 11833149,
+      "flashscoreId": "pbXYexxB",
+      "pinnacleId": 1611618343,
+      "oddinId": null,
+      "mollybetId": null,
+      "opticoddsId": null,
+      "lsportsId": null,
+      "txoddsId": null
+    },
+    "participant1Name": "CA Independiente Avellaneda",
+    "participant2Name": "CA Talleres de Cordoba",
+    "tournamentName": "Liga Profesional",
+    "categoryName": "Argentina"
+  }
+]
+
+Response (200 OK)
+
+On a successful request, the server responds with a status code 200 and returns a JSON array containing fixture objects with the following fields:
+
+    hasOdds (boolean) — Whether the fixture has odds available.
+    startTime (string) — The start time of the fixture.
+    participant1Id (number) — The ID of the first participant.
+    participant2Id (number) — The ID of the second participant.
+    fixtureId (string) — The unique identifier for the fixture.
+    sportId (number) — The ID of the sport associated with the fixture.
+    updatedAt (string) — The timestamp of the last update to the fixture.
+    tournamentId (number) — The ID of the tournament associated with the fixture.
+    seasonId (number) — (Optional) The ID of the season.
+    statusId (number) — The current status of the fixture.
+    trueStartTime (string|null) — The actual start time of the fixture, if available.
+    trueEndTime (string|null) — The actual end time of the fixture, if available.
+    externalProviders (object) — IDs from third-party providers:
+        betradarId (number|null) — (Optional) The ID assigned by Betradar.
+        sofascoreId (number|null) — (Optional) The ID assigned by Sofascore.
+        betgeniusId (number|null) — (Optional) The ID assigned by Betgenius.
+        flashscoreId (string|null) — (Optional) The ID assigned by Flashscore.
+        pinnacleId (number|null) — (Optional) The ID assigned by Pinnacle.
+        oddinId (number|null) — (Optional) The ID assigned by Oddin.
+        mollybetId (number|null) — (Optional) The unique ID assigned by Mollybet.
+        opticoddsId (number|null) — (Optional) The unique ID assigned by Opticodds.
+        lsportsId (number|null) — (Optional) The unique ID assigned by LSports.
+        txoddsId (number|null) — (Optional) The unique ID assigned by TXOdds.
+    participant1Name (string) — The name of the first participant (in your requested language).
+    participant2Name (string) — The name of the second participant (in your requested language).
+    tournamentName (string) — The name of the tournament.
+    categoryName (string) — The name of the category to which the tournament belongs.
+	
+GET markets
+
+Retrieves a list of markets available in the system.
+Endpoint
+
+GET /v4/markets
+
+Request Parameters
+
+    language (a2) — (Optional) The language in which the tournament information should be returned. By default, the value is en for English.
+
+Example Request
+
+GET /v4/markets?language=en
+
+Example Response
+
+[
+  {
+    "marketId": 101,
+    "marketLength": 3,
+    "marketName": "Full Time Result",
+    "playerProp": false,
+    "sportId": 10,
+    "handicap": 0,
+    "period": "fulltime",
+    "marketType": "1x2",
+    "outcomes": [
+      {
+        "outcomeId": 101,
+        "outcomeName": "1"
+      },
+      {
+        "outcomeId": 102,
+        "outcomeName": "X"
+      },
+      {
+        "outcomeId": 103,
+        "outcomeName": "2"
+      }
+    ]
+  },
+  {
+    "marketId": 104,
+    "marketLength": 2,
+    "marketName": "Both Teams To Score",
+    "playerProp": false,
+    "sportId": 10,
+    "handicap": 0,
+    "period": "fulltime",
+    "marketType": "totals",
+    "outcomes": [
+      {
+        "outcomeId": 104,
+        "outcomeName": "Yes"
+      },
+      {
+        "outcomeId": 105,
+        "outcomeName": "No"
+      }
+    ]
+  },
+  {
+    "marketId": 106,
+    "marketLength": 2,
+    "marketName": "Over Under Full Time",
+    "playerProp": false,
+    "sportId": 10,
+    "handicap": 0.5,
+    "period": "fulltime",
+    "marketType": "totals",
+    "outcomes": [
+      {
+        "outcomeId": 106,
+        "outcomeName": "Over"
+      },
+      {
+        "outcomeId": 107,
+        "outcomeName": "Under"
+      }
+    ]
+  }
+]
+
+Response (200 OK)
+
+On a successful request, the server responds with a status code 200 and returns a JSON array containing market objects. Each market object includes the following fields:
+
+    marketId (number) — The unique identifier for the market.
+    marketLength (number) — The number of outcomes in the market.
+    marketName (string) — The name of the market.
+    playerProp (boolean) — Indicates if the market is a player prop.
+    sportId (number) — The identifier for the associated sport.
+    handicap (number) — The handicap value for the market.
+    period (string) — The period of play that the market relates to.
+    marketType (string) — The type of the market.
+    outcomes (array) — An array of outcome objects associated with the market, where each outcome includes:
+        outcomeId (number) — The unique identifier for the outcome.
+        outcomeName (string) — The name of the outcome.
+		
+GET participants
+
+Retrieve a list of participants associated with a specific sport identified by the sportId.
+Endpoint
+
+GET /v4/participants
+
+Request Parameters
+
+    sportId* (number) — A numeric identifier for the sport.
+    language (a2) — (Optional) The language that the names will be returned in, if available. If not available, en is used.
+
+Example Request
+
+GET /v4/participants?sportId=11&language=en
+
+Example Response
+
+{
+  "3409": "Chicago Bulls",
+  "3410": "Milwaukee Bucks"
+}
+
+Response (200 OK)
+
+On a successful request, the server responds with a status code 200 and returns a JSON object where every key is the participantId and each value is the participant name.
+
+Notes
+
+    Endpoint cooldown: 1000ms
+	
+GET odds
+
+Retrieves detailed odds and metadata for a specified sports fixture from various bookmakers.
+Endpoint
+
+GET /v4/odds
+
+Request Parameters
+
+    fixtureId* (string) — Unique ID of the fixture
+    bookmakers (string) — (Optional) Comma-separated list of bookmakers
+    oddsFormat (string) — (Optional) Desired odds format. Options: fractional, decimal, american
+    language (string) — (Optional) Language code for translated labels
+    verbosity (number) — (Optional) Level of response detail. Higher value returns more verbose output.
+
+Example Request
+
+GET /v4/odds?fixtureId=id1000001761300517&oddsFormat=decimal&verbosity=3
+
+Sample Response
+
+{
+  "fixtureId": "id1000001761300517",
+  "participant1Id": 3,
+  "participant2Id": 17,
+  "sportId": 10,
+  "tournamentId": 17,
+  "seasonId": null,
+  "externalProviders": {
+    "betradarId": 61300517,
+    "mollybetId": null,
+    "opticoddsId": null,
+    "lsportsId": null,
+    "txoddsId": null,
+    "sofascoreId": null,
+    "betgeniusId": 12482853,
+    "flashscoreId": null,
+    "pinnacleId": 1610924789,
+    "oddinId": null
+  },
+  "statusId": 0,
+  "hasOdds": true,
+  "startTime": "2025-08-16T16:30:00.000Z",
+  "trueStartTime": null,
+  "trueEndTime": null,
+  "updatedAt": "2025-07-27T16:37:57.903Z",
+  "participant1Name": "Wolverhampton Wanderers",
+  "participant2Name": "Manchester City",
+  "sportName": "Soccer",
+  "tournamentSlug": "premier-league",
+  "categorySlug": "england",
+  "categoryName": "England",
+  "tournamentName": "Premier League",
+  "bookmakerOdds": {
+    "pinnacle": {
+      "markets": {
+        "101": {
+          "outcomes": {
+            "101": {
+              "players": {
+                "0": {
+                  "price": 5.97,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "home"
+                }
+              }
+            },
+            "102": {
+              "players": {
+                "0": {
+                  "price": 4.84,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "draw"
+                }
+              }
+            },
+            "103": {
+              "players": {
+                "0": {
+                  "price": 1.465,
+                  "limit": 537.63,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "away"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/3192397468/0/moneyline"
+        },
+        "1010": {
+          "outcomes": {
+            "1010": {
+              "players": {
+                "0": {
+                  "price": 1.641,
+                  "limit": 390.02,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "2.5/over"
+                }
+              }
+            },
+            "1011": {
+              "players": {
+                "0": {
+                  "price": 2.28,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "2.5/under"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127342/0/totals"
+        },
+        "1012": {
+          "outcomes": {
+            "1012": {
+              "players": {
+                "0": {
+                  "price": 2.6,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "3.5/over"
+                }
+              }
+            },
+            "1013": {
+              "players": {
+                "0": {
+                  "price": 1.492,
+                  "limit": 508.13,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "3.5/under"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127345/0/totals"
+        },
+        "1074": {
+          "outcomes": {
+            "1074": {
+              "players": {
+                "0": {
+                  "price": 3.42,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "0.25/home"
+                }
+              }
+            },
+            "1075": {
+              "players": {
+                "0": {
+                  "price": 1.32,
+                  "limit": 781.25,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "0.25/away"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127323/0/spreads"
+        },
+        "1076": {
+          "outcomes": {
+            "1076": {
+              "players": {
+                "0": {
+                  "price": 2.75,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "0.5/home"
+                }
+              }
+            },
+            "1077": {
+              "players": {
+                "0": {
+                  "price": 1.454,
+                  "limit": 550.66,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "0.5/away"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127324/0/spreads"
+        },
+        "1078": {
+          "outcomes": {
+            "1078": {
+              "players": {
+                "0": {
+                  "price": 2.44,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "0.75/home"
+                }
+              }
+            },
+            "1079": {
+              "players": {
+                "0": {
+                  "price": 1.571,
+                  "limit": 437.83,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "0.75/away"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127325/0/spreads"
+        },
+        "1080": {
+          "outcomes": {
+            "1080": {
+              "players": {
+                "0": {
+                  "price": 2.11,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "1.0/home"
+                }
+              }
+            },
+            "1081": {
+              "players": {
+                "0": {
+                  "price": 1.751,
+                  "limit": 332.89,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "1.0/away"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127326/0/spreads"
+        },
+        "1082": {
+          "outcomes": {
+            "1082": {
+              "players": {
+                "0": {
+                  "price": 1.819,
+                  "limit": 305.25,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "1.25/home"
+                }
+              }
+            },
+            "1083": {
+              "players": {
+                "0": {
+                  "price": 2.04,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "1.25/away"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/3192397468/0/spreads"
+        },
+        "1084": {
+          "outcomes": {
+            "1084": {
+              "players": {
+                "0": {
+                  "price": 1.636,
+                  "limit": 393.08,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "1.5/home"
+                }
+              }
+            },
+            "1085": {
+              "players": {
+                "0": {
+                  "price": 2.31,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "1.5/away"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127327/0/spreads"
+        },
+        "1086": {
+          "outcomes": {
+            "1086": {
+              "players": {
+                "0": {
+                  "price": 1.467,
+                  "limit": 535.33,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "1.75/home"
+                }
+              }
+            },
+            "1087": {
+              "players": {
+                "0": {
+                  "price": 2.74,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "1.75/away"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127328/0/spreads"
+        },
+        "1088": {
+          "outcomes": {
+            "1088": {
+              "players": {
+                "0": {
+                  "price": 1.298,
+                  "limit": 838.93,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "2.0/home"
+                }
+              }
+            },
+            "1089": {
+              "players": {
+                "0": {
+                  "price": 3.58,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "2.0/away"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127329/0/spreads"
+        },
+        "1090": {
+          "outcomes": {
+            "1090": {
+              "players": {
+                "0": {
+                  "price": 1.25,
+                  "limit": 1000,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "2.25/home"
+                }
+              }
+            },
+            "1091": {
+              "players": {
+                "0": {
+                  "price": 4.02,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "2.25/away"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127330/0/spreads"
+        },
+        "10166": {
+          "outcomes": {
+            "10166": {
+              "players": {
+                "0": {
+                  "price": 1.233,
+                  "limit": 1072.96,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "1.75/over"
+                }
+              }
+            },
+            "10167": {
+              "players": {
+                "0": {
+                  "price": 4.09,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "1.75/under"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127339/0/totals"
+        },
+        "10168": {
+          "outcomes": {
+            "10168": {
+              "players": {
+                "0": {
+                  "price": 1.282,
+                  "limit": 886.52,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "2.0/over"
+                }
+              }
+            },
+            "10169": {
+              "players": {
+                "0": {
+                  "price": 3.63,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "2.0/under"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127340/0/totals"
+        },
+        "10170": {
+          "outcomes": {
+            "10170": {
+              "players": {
+                "0": {
+                  "price": 1.462,
+                  "limit": 541.13,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "2.25/over"
+                }
+              }
+            },
+            "10171": {
+              "players": {
+                "0": {
+                  "price": 2.73,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "2.25/under"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127341/0/totals"
+        },
+        "10172": {
+          "outcomes": {
+            "10172": {
+              "players": {
+                "0": {
+                  "price": 1.806,
+                  "limit": 310.17,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "2.75/over"
+                }
+              }
+            },
+            "10173": {
+              "players": {
+                "0": {
+                  "price": 2.04,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "2.75/under"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/3192397468/0/totals"
+        },
+        "10174": {
+          "outcomes": {
+            "10174": {
+              "players": {
+                "0": {
+                  "price": 2.05,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "3.0/over"
+                }
+              }
+            },
+            "10175": {
+              "players": {
+                "0": {
+                  "price": 1.781,
+                  "limit": 320.1,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "3.0/under"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127343/0/totals"
+        },
+        "10176": {
+          "outcomes": {
+            "10176": {
+              "players": {
+                "0": {
+                  "price": 2.33,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "3.25/over"
+                }
+              }
+            },
+            "10177": {
+              "players": {
+                "0": {
+                  "price": 1.609,
+                  "limit": 410.51,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "3.25/under"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127344/0/totals"
+        },
+        "10178": {
+          "outcomes": {
+            "10178": {
+              "players": {
+                "0": {
+                  "price": 3.08,
+                  "limit": 250,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "3.75/over"
+                }
+              }
+            },
+            "10179": {
+              "players": {
+                "0": {
+                  "price": 1.369,
+                  "limit": 677.51,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "3.75/under"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127346/0/totals"
+        },
+        "10208": {
+          "outcomes": {
+            "10208": {
+              "players": {
+                "0": {
+                  "price": 6.25,
+                  "limit": 50,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "home"
+                }
+              }
+            },
+            "10209": {
+              "players": {
+                "0": {
+                  "price": 2.59,
+                  "limit": 50,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "draw"
+                }
+              }
+            },
+            "10210": {
+              "players": {
+                "0": {
+                  "price": 1.943,
+                  "limit": 53.02,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "away"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/3192397471/1/moneyline"
+        },
+        "10258": {
+          "outcomes": {
+            "10258": {
+              "players": {
+                "0": {
+                  "price": 2.46,
+                  "limit": 50,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "1.5/over"
+                }
+              }
+            },
+            "10259": {
+              "players": {
+                "0": {
+                  "price": 1.549,
+                  "limit": 91.07,
+                  "active": true,
+                  "changedAt": "2025-07-27T13:25:47.505Z",
+                  "playerId": 0,
+                  "bookmakerOutcomeId": "1.5/under"
+                }
+              }
+            }
+          },
+          "bookmakerMarketId": "line/29/1980/49743127391/1/totals"
+        }
+      },
+      "bookmakerIsActive": true,
+      "bookmakerFixtureId": "1610924789",
+      "fixturePath": "https://www.pinnacle.com/en/e/e/e/1610924789/#all"
+    }
+  }
+}
+
+Response Fields Breakdown
+Top-Level Fields
+
+    fixtureId string — Internal unique ID for the fixture.
+    participant1Id number — The ID of the first participant.
+    participant2Id number — The ID of the second participant.
+    sportId number — Sport ID
+    tournamentId number — Tournament ID
+    seasonId number|null — (Optional) The ID of the season.
+    externalProviders (object) — IDs from third-party providers:
+        betradarId (number|null) — (Optional) The ID assigned by Betradar.
+        mollybetId (number|null) — (Optional) The unique ID assigned by Mollybet.
+        opticoddsId (number|null) — (Optional) The unique ID assigned by Opticodds.
+        lsportsId (number|null) — (Optional) The unique ID assigned by LSports.
+        txoddsId (number|null) — (Optional) The unique ID assigned by TXOdds.
+        sofascoreId (number|null) — (Optional) The ID assigned by Sofascore.
+        betgeniusId (number|null) — (Optional) The ID assigned by Betgenius.
+        flashscoreId (string|null) — (Optional) The ID assigned by Flashscore.
+        pinnacleId (number|null) — (Optional) The ID assigned by Pinnacle.
+        oddinId (number|null) — (Optional) The ID assigned by Oddin.
+    statusId number — The current status of the fixture.
+    hasOdds boolean — Whether the fixture has odds available.
+    startTime string — ISO 8601 start time.
+    trueStartTime string|null — The actual start time of the fixture, if available.
+    trueEndTime string|null — The actual end time of the fixture, if available.
+    updatedAt string — ISO 8601 last update time.
+	
+	Endpoint cooldown: 500ms
+	
+GET historical-odds
+Endpoint
+
+GET /v4/historical-odds
+
+Request Parameters
+
+    fixtureId* (string) — Fixture ID to retrieve historical odds for.
+    bookmakers* (string) — Comma-separated list of bookmaker slugs (max 3) to filter results. Example: pinnacle,bet365
+    id (number) — (Optional) The unique ID of a specific historical odds entry to filter by.
+    playerId (number) — (Optional) The playerId associated with the odds to narrow down results.
+    outcomeId (number) — (Optional) The outcomeId to filter odds for a specific outcome.
+    active (boolean) — (Optional) Filter based on whether the odds entry is currently active.
+
+Example Request
+
+GET /v4/historical-odds?fixtureId=id1000000758265379
+
+Example Response
+
+{
+  "fixtureId": "id1000000758265379",
+  "bookmakers": {
+    "pinnacle": {
+      "markets": {
+        "101": {
+          "outcomes": {
+            "101": {
+              "players": {
+                "0": [
+                  {
+                    "createdAt": "2025-04-16T21:12:10.506331+00:00",
+                    "price": 9.11,
+                    "limit": 1191.25,
+                    "active": false,
+                    "exchangeMeta": null
+                  },
+                  {
+                    "createdAt": "2025-04-16T20:50:58.321847+00:00",
+                    "price": 9.11,
+                    "limit": 1191.25,
+                    "active": true,
+                    "exchangeMeta": null
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "10168": {
+          "outcomes": {
+            "10168": {
+              "players": {
+                "0": [
+                  {
+                    "createdAt": "2025-04-16T20:16:45.057806+00:00",
+                    "price": 1.729,
+                    "limit": 13072.7023319616,
+                    "active": false,
+                    "exchangeMeta": null
+                  },
+                  {
+                    "createdAt": "2025-04-16T20:16:18.597131+00:00",
+                    "price": 1.729,
+                    "limit": 13072.7023319616,
+                    "active": true,
+                    "exchangeMeta": null
+                  },
+                  {
+                    "createdAt": "2025-04-16T20:15:51.441377+00:00",
+                    "price": 1.699,
+                    "limit": 13633.7625178827,
+                    "active": true,
+                    "exchangeMeta": null
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+Response (200 OK)
+
+On a successful request, the server responds with a status code 200 and returns a map of fixtureId to nested bookmaker odds history..
+
+    bookmakers (object) — Odds grouped by bookmaker slug
+        markets (object) — Each fixture contains market objects with outcomes.
+        outcomes (object) — Outcome IDs with player data.
+        players (object) — Players with odds data containing:
+            id (number) — The unique identifier for the historical odds entry.
+            createdAt (string) — The timestamp when the historical odds entry was created.
+            price (number) — The price (odds) offered.
+            limit (number) — The maximum stake allowed for the odds.
+            active (boolean) — Whether the odds are currently active.
+            exchangeMeta (object|null) — Exchange metadata if applicable, including back and lay prices.
+
+Notes
+
+    Endpoint cooldown: 5000ms
+	
+GET settlements
+
+Returns settlement results for all available markets in a specific fixture.
+Endpoint
+
+GET /v4/settlements
+
+Request Parameters
+
+    fixtureId* (string) — The unique ID of the fixture for which to return settlement data.
+    playerId (number) — (Optional) The unique ID of the player to filter results by.
+    outcomeId (number) — (Optional) The unique ID of the outcome to filter results by.
+
+Example Request
+
+GET /v4/settlements?fixtureId=id1000000761280685
+
+Example Response
+
+{
+  "fixtureId": "id1000000761280685",
+  "markets": {
+    "101": {
+      "outcomes": {
+        "101": {
+          "players": {
+            "0": {
+              "result": "WIN"
+            }
+          }
+        },
+        "102": {
+          "players": {
+            "0": {
+              "result": "LOSE"
+            }
+          }
+        },
+        "103": {
+          "players": {
+            "0": {
+              "result": "LOSE"
+            }
+          }
+        }
+      }
+    },
+    "106": {
+      "outcomes": {
+        "106": {
+          "players": {
+            "0": {
+              "result": "WIN"
+            }
+          }
+        },
+        "107": {
+          "players": {
+            "0": {
+              "result": "LOSE"
+            }
+          }
+        }
+      }
+    },
+    "1056": {
+      "outcomes": {
+        "1056": {
+          "players": {
+            "0": {
+              "result": "PUSH"
+            }
+          }
+        },
+        "1057": {
+          "players": {
+            "0": {
+              "result": "PUSH"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+Response (200 OK)
+
+On a successful request, the server responds with a status code 200 — Returns the settlement result of each outcome per player for the given fixture.
+
+    fixtureId (string) — The unique identifier of the fixture to retrieve scores for.
+    markets (object) — A map of marketId to outcome and player result information.
+        outcomes (object) — Map of outcome IDs to outcome data.
+            players (object) — Each outcome maps to one or more players offering odds.
+                result (string) — The final result of the player's outcome. Possible values are: WIN, LOSE, HALFWIN, HALFLOSS, PUSH, CANCELLED, UNDECIDED
+				
+				Notes
+
+    Endpoint cooldown: 2000ms
+	
