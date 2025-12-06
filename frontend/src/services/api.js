@@ -1,4 +1,4 @@
-// src/services/api.js - Enhanced API Service with Tracking
+// src/services/api.js - Enhanced with Odds Integration
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
 class ApiService {
@@ -32,7 +32,10 @@ class ApiService {
     return this.fetch('/sports');
   }
 
-  // NBA Endpoints
+  // ============================================
+  // NBA Endpoints - Enhanced with Odds
+  // ============================================
+  
   async getNBATodayPredictions() {
     return this.fetch('/nba/predictions/today');
   }
@@ -43,10 +46,6 @@ class ApiService {
 
   async getNBAHistory(days = 30) {
     return this.fetch(`/nba/predictions/history?days=${days}`);
-  }
-
-  async getNBABestBets(minConfidence = 0.65, minEdge = 2.0) {
-    return this.fetch(`/nba/predictions/best-bets?min_confidence=${minConfidence}&min_edge=${minEdge}`);
   }
 
   async getNBAGameDetail(gameId) {
@@ -63,7 +62,68 @@ class ApiService {
     return this.fetch(url);
   }
 
+  // NEW: Odds-related endpoints
+  async getNBAOddsToday() {
+    return this.fetch('/nba/odds/today');
+  }
+
+  async getNBAOddsForPlayer(playerName, propType = null, date = null) {
+    let url = `/nba/odds/player/${encodeURIComponent(playerName)}`;
+    const params = [];
+    if (propType) params.push(`prop_type=${propType}`);
+    if (date) params.push(`date=${date}`);
+    if (params.length) url += `?${params.join('&')}`;
+    return this.fetch(url);
+  }
+
+  async getNBAPredictionsWithEdge(minEdge = 0.02, date = null) {
+    let url = `/nba/predictions/with-edge?min_edge=${minEdge}`;
+    if (date) url += `&date=${date}`;
+    return this.fetch(url);
+  }
+
+  // NEW: NBA Bet tracking endpoints
+  async saveNBABet(betData) {
+    return this.fetch('/nba/bets/save', {
+      method: 'POST',
+      body: JSON.stringify(betData)
+    });
+  }
+
+  async saveAllNBABets(options = {}) {
+    return this.fetch('/nba/bets/save-all', {
+      method: 'POST',
+      body: JSON.stringify(options)
+    });
+  }
+
+  async getNBAPendingBets(date = null) {
+    let url = '/nba/bets/pending';
+    if (date) url += `?date=${date}`;
+    return this.fetch(url);
+  }
+
+  async getNBABetHistory(days = 30, result = null) {
+    let url = `/nba/bets/history?days=${days}`;
+    if (result) url += `&result=${result}`;
+    return this.fetch(url);
+  }
+
+  async updateNBABetResult(betId, actualValue) {
+    return this.fetch('/nba/bets/result', {
+      method: 'POST',
+      body: JSON.stringify({ bet_id: betId, actual_value: actualValue })
+    });
+  }
+
+  async getNBABetPerformance(days = 30) {
+    return this.fetch(`/nba/bets/performance?days=${days}`);
+  }
+
+  // ============================================
   // NHL Endpoints
+  // ============================================
+  
   async getNHLTodayPredictions() {
     return this.fetch('/nhl/predictions/today');
   }
@@ -92,19 +152,25 @@ class ApiService {
     return this.fetch(`/nhl/results/history?days=${days}`);
   }
 
+  // ============================================
   // Bankroll Endpoints
+  // ============================================
+  
   async getBankrollStatus() {
     return this.fetch('/bankroll/status');
   }
 
-  async updateBankroll(amount) {
+  async updateBankroll(amount, sport = 'nhl') {
     return this.fetch('/bankroll/update', {
       method: 'POST',
-      body: JSON.stringify({ bankroll: amount })
+      body: JSON.stringify({ bankroll: amount, sport })
     });
   }
 
-  // NEW: Historical Tracking Endpoints
+  // ============================================
+  // NHL Historical Tracking Endpoints
+  // ============================================
+  
   async getTrackingPerformance(days = 30) {
     return this.fetch(`/tracking/performance?days=${days}`);
   }

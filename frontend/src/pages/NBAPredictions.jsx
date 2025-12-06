@@ -1,6 +1,54 @@
-// src/pages/NBAPredictions.jsx
+// src/pages/NBAPredictions.jsx - Enhanced with Odds Integration
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import api from '../services/api';
+
+// Edge class colors
+const EDGE_COLORS = {
+  EXCEPTIONAL: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+  STRONG: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  GOOD: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  MODERATE: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  MARGINAL: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
+  NEGATIVE: 'bg-red-500/20 text-red-400 border-red-500/30',
+};
+
+const EdgeBadge = ({ edge, edgeClass }) => {
+  const colorClass = EDGE_COLORS[edgeClass] || EDGE_COLORS.MARGINAL;
+  return (
+    <span className={`badge border ${colorClass}`}>
+      {edge > 0 ? '+' : ''}{(edge * 100).toFixed(1)}% {edgeClass}
+    </span>
+  );
+};
+
+const OddsDisplay = ({ prediction }) => {
+  if (!prediction.has_odds) {
+    return <span className="text-slate-500 text-xs">No odds</span>;
+  }
+  
+  const direction = prediction.bet_direction;
+  const isOver = direction === 'over';
+  
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <span className={`text-xs font-bold ${isOver ? 'text-emerald-400' : 'text-red-400'}`}>
+          {direction.toUpperCase()}
+        </span>
+        <span className="text-xs text-slate-400">
+          {prediction.dk_line}
+        </span>
+        <span className="text-xs font-mono text-white">
+          {prediction.odds_american}
+        </span>
+      </div>
+      <div className="text-[10px] text-slate-500">
+        Implied: {((prediction.implied_probability || 0) * 100).toFixed(0)}% | 
+        Model: {((prediction.model_probability || 0) * 100).toFixed(0)}%
+      </div>
+    </div>
+  );
+};
 
 const PlayerHistoryPanel = ({ playerId, playerName, onClose }) => {
   const [history, setHistory] = useState(null);
@@ -9,9 +57,7 @@ const PlayerHistoryPanel = ({ playerId, playerName, onClose }) => {
   useEffect(() => {
     const load = async () => {
       try {
-        // Request more history records to ensure we get 5 unique games
         const data = await api.getNBAPlayerHistory(playerId, 20);
-        console.log('Player history loaded:', data);
         setHistory(data.history || []);
       } catch (e) { console.error(e); }
       setLoading(false);
@@ -19,7 +65,6 @@ const PlayerHistoryPanel = ({ playerId, playerName, onClose }) => {
     load();
   }, [playerId]);
 
-  // Group history by game date
   const groupedHistory = useMemo(() => {
     if (!history || history.length === 0) return [];
     const grouped = {};
@@ -30,26 +75,21 @@ const PlayerHistoryPanel = ({ playerId, playerName, onClose }) => {
       }
       grouped[key].props.push(h);
     });
-    // Sort by date descending and return all games (up to 5)
-    return Object.values(grouped)
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 5);
+    return Object.values(grouped).sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
   }, [history]);
 
   if (loading) {
     return (
-      <td colSpan="8" className="player-expansion p-4">
+      <td colSpan="10" className="bg-slate-800/50 p-4">
         <div className="flex justify-center"><div className="spinner w-6 h-6"></div></div>
       </td>
     );
   }
 
   return (
-    <td colSpan="8" className="player-expansion p-4 bg-slate-800/50">
+    <td colSpan="10" className="bg-slate-800/50 p-4">
       <div className="flex items-center justify-between mb-4">
-        <span className="text-sm font-semibold text-emerald-400">
-          {playerName} - Last 5 Games Performance
-        </span>
+        <span className="text-sm font-semibold text-emerald-400">{playerName} - Last 5 Games</span>
         <button onClick={onClose} className="text-slate-400 hover:text-white text-xs">Close ✕</button>
       </div>
       
@@ -63,21 +103,12 @@ const PlayerHistoryPanel = ({ playerId, playerName, onClose }) => {
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {game.props.map((prop, j) => {
-                  const predicted = parseFloat(prop.predicted_value) || 0;
-                  const actual = prop.actual_value;
-                  const line = parseFloat(prop.line) || 0;
                   const hit = prop.hit;
-                  const diff = actual !== null ? (actual - predicted).toFixed(1) : null;
-                  
                   return (
-                    <div 
-                      key={j} 
-                      className={`p-2 rounded text-xs ${
-                        hit === true ? 'bg-emerald-500/10 border border-emerald-500/20' : 
-                        hit === false ? 'bg-red-500/10 border border-red-500/20' : 
-                        'bg-slate-600/30'
-                      }`}
-                    >
+                    <div key={j} className={`p-2 rounded text-xs ${
+                      hit === true ? 'bg-emerald-500/10 border border-emerald-500/20' : 
+                      hit === false ? 'bg-red-500/10 border border-red-500/20' : 'bg-slate-600/30'
+                    }`}>
                       <div className="flex justify-between items-center mb-1">
                         <span className="uppercase font-semibold text-slate-300">{prop.prop_type}</span>
                         {hit !== null && (
@@ -91,35 +122,16 @@ const PlayerHistoryPanel = ({ playerId, playerName, onClose }) => {
                       <div className="space-y-0.5 text-[11px]">
                         <div className="flex justify-between">
                           <span className="text-slate-500">Line:</span>
-                          <span className="text-slate-400">{line}</span>
+                          <span className="text-slate-400">{prop.line}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-500">Predicted:</span>
-                          <span className="text-slate-300">{predicted.toFixed(1)}</span>
+                          <span className="text-slate-500">Pred:</span>
+                          <span className="text-slate-300">{parseFloat(prop.predicted_value).toFixed(1)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-500">Actual:</span>
-                          <span className={`font-medium ${
-                            hit === true ? 'text-emerald-400' : 
-                            hit === false ? 'text-red-400' : 'text-white'
-                          }`}>
-                            {actual !== null ? actual.toFixed(1) : '-'}
-                          </span>
-                        </div>
-                        {diff !== null && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-500">Diff:</span>
-                            <span className={parseFloat(diff) >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                              {parseFloat(diff) >= 0 ? '+' : ''}{diff}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex justify-between mt-1 pt-1 border-t border-slate-600/50">
-                          <span className="text-slate-500">Call:</span>
-                          <span className={`font-bold ${
-                            prop.recommended_bet === 'over' ? 'text-emerald-400' : 'text-red-400'
-                          }`}>
-                            {prop.recommended_bet?.toUpperCase()}
+                          <span className={hit === true ? 'text-emerald-400' : hit === false ? 'text-red-400' : 'text-white'}>
+                            {prop.actual_value !== null ? prop.actual_value.toFixed(1) : '-'}
                           </span>
                         </div>
                       </div>
@@ -144,9 +156,13 @@ const NBAPredictions = () => {
   const [filterMatchup, setFilterMatchup] = useState('all');
   const [filterTeam, setFilterTeam] = useState('all');
   const [filterProp, setFilterProp] = useState('all');
+  const [filterEdge, setFilterEdge] = useState('all');
+  const [showBetsOnly, setShowBetsOnly] = useState(false);
   const [sortBy, setSortBy] = useState('edge');
   const [sortDir, setSortDir] = useState('desc');
   const [expandedPlayer, setExpandedPlayer] = useState(null);
+  const [bankroll, setBankroll] = useState(1000);
+  const [savingBets, setSavingBets] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -156,7 +172,7 @@ const NBAPredictions = () => {
         ? await api.getNBATodayPredictions()
         : await api.getNBAPredictionsByDate(selectedDate);
       setData(res);
-      console.log('NBA Data loaded:', res);
+      if (res.bankroll) setBankroll(res.bankroll);
     } catch (e) { 
       console.error('Failed to load NBA data:', e); 
     }
@@ -167,12 +183,11 @@ const NBAPredictions = () => {
     loadData();
   }, [loadData]);
 
-  // Flatten all predictions and track game participants
-  const { allPredictions, gameTeams } = useMemo(() => {
-    if (!data) return { allPredictions: [], gameTeams: {} };
+  const { allPredictions, gameTeams, stats } = useMemo(() => {
+    if (!data) return { allPredictions: [], gameTeams: {}, stats: {} };
     
     let predictions = [];
-    const teams = {}; // matchup -> [team1, team2]
+    const teams = {};
     
     if (data.games && Array.isArray(data.games)) {
       data.games.forEach(game => {
@@ -182,31 +197,30 @@ const NBAPredictions = () => {
         teams[matchup] = [away, home];
         
         (game.player_predictions || []).forEach(p => {
-          predictions.push({
-            ...p,
-            matchup,
-            game_id: game.game_id || p.game_id
-          });
+          predictions.push({ ...p, matchup, game_id: game.game_id || p.game_id });
         });
-      });
-    } else if (data.player_predictions && Array.isArray(data.player_predictions)) {
-      data.player_predictions.forEach(p => {
-        const matchup = `${p.opponent_abbrev || 'OPP'} @ ${p.team_abbrev || 'TEAM'}`;
-        if (!teams[matchup]) teams[matchup] = [p.opponent_abbrev, p.team_abbrev];
-        predictions.push({ ...p, matchup });
-      });
-    } else if (Array.isArray(data)) {
-      data.forEach(p => {
-        const matchup = `${p.opponent_abbrev || 'OPP'} @ ${p.team_abbrev || 'TEAM'}`;
-        if (!teams[matchup]) teams[matchup] = [p.opponent_abbrev, p.team_abbrev];
-        predictions.push({ ...p, matchup });
       });
     }
     
-    return { allPredictions: predictions, gameTeams: teams };
+    // Calculate stats
+    const withOdds = predictions.filter(p => p.has_odds);
+    const bets = predictions.filter(p => p.is_bet_recommended);
+    const totalEdge = bets.reduce((s, p) => s + (p.edge || 0), 0);
+    
+    return {
+      allPredictions: predictions,
+      gameTeams: teams,
+      stats: {
+        total: predictions.length,
+        withOdds: withOdds.length,
+        bets: bets.length,
+        totalEdge: totalEdge,
+        avgEdge: bets.length > 0 ? totalEdge / bets.length : 0
+      }
+    };
   }, [data]);
 
-  // Group predictions by player
+  // Group by player
   const playerGroups = useMemo(() => {
     const groups = {};
     allPredictions.forEach(pred => {
@@ -225,17 +239,12 @@ const NBAPredictions = () => {
     return Object.values(groups);
   }, [allPredictions]);
 
-  // Unique values for filters
-  const matchups = useMemo(() => {
-    return Object.keys(gameTeams).sort();
-  }, [gameTeams]);
-
+  const matchups = useMemo(() => Object.keys(gameTeams).sort(), [gameTeams]);
+  
   const teams = useMemo(() => {
-    // If a matchup is selected, only show teams from that matchup
     if (filterMatchup !== 'all' && gameTeams[filterMatchup]) {
       return gameTeams[filterMatchup].filter(Boolean).sort();
     }
-    // Otherwise show all teams
     const set = new Set();
     Object.values(gameTeams).forEach(([t1, t2]) => {
       if (t1) set.add(t1);
@@ -249,26 +258,29 @@ const NBAPredictions = () => {
     return Array.from(set).sort();
   }, [allPredictions]);
 
-  // Filter and sort player groups
+  // Filter and sort
   const filteredPlayers = useMemo(() => {
     let result = [...playerGroups];
     
-    // Matchup filter - show BOTH teams in the matchup
     if (filterMatchup !== 'all') {
       const teamsInMatchup = gameTeams[filterMatchup] || [];
-      result = result.filter(p => 
-        p.matchup === filterMatchup || teamsInMatchup.includes(p.team_abbrev)
-      );
+      result = result.filter(p => p.matchup === filterMatchup || teamsInMatchup.includes(p.team_abbrev));
     }
     
-    // Team filter
     if (filterTeam !== 'all') {
       result = result.filter(p => p.team_abbrev === filterTeam);
     }
     
-    // Prop filter - only include players who have that prop
     if (filterProp !== 'all') {
       result = result.filter(p => p.props.some(prop => prop.prop_type === filterProp));
+    }
+    
+    if (filterEdge !== 'all') {
+      result = result.filter(p => p.props.some(prop => prop.edge_class === filterEdge));
+    }
+    
+    if (showBetsOnly) {
+      result = result.filter(p => p.props.some(prop => prop.is_bet_recommended));
     }
     
     // Sort
@@ -276,8 +288,8 @@ const NBAPredictions = () => {
       let aVal, bVal;
       switch (sortBy) {
         case 'edge':
-          aVal = Math.max(...a.props.map(p => Math.abs(parseFloat(p.edge) || 0)));
-          bVal = Math.max(...b.props.map(p => Math.abs(parseFloat(p.edge) || 0)));
+          aVal = Math.max(...a.props.map(p => p.edge || 0));
+          bVal = Math.max(...b.props.map(p => p.edge || 0));
           break;
         case 'player':
           aVal = a.player_name || '';
@@ -288,8 +300,8 @@ const NBAPredictions = () => {
           bVal = b.team_abbrev || '';
           break;
         default:
-          aVal = Math.max(...a.props.map(p => Math.abs(parseFloat(p.edge) || 0)));
-          bVal = Math.max(...b.props.map(p => Math.abs(parseFloat(p.edge) || 0)));
+          aVal = Math.max(...a.props.map(p => p.edge || 0));
+          bVal = Math.max(...b.props.map(p => p.edge || 0));
       }
       if (typeof aVal === 'string') {
         return sortDir === 'desc' ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
@@ -298,20 +310,25 @@ const NBAPredictions = () => {
     });
     
     return result;
-  }, [playerGroups, filterMatchup, filterTeam, filterProp, sortBy, sortDir, gameTeams]);
+  }, [playerGroups, filterMatchup, filterTeam, filterProp, filterEdge, showBetsOnly, sortBy, sortDir, gameTeams]);
 
-  const togglePlayer = (playerId) => {
-    setExpandedPlayer(prev => prev === playerId ? null : playerId);
-  };
-
-  // Calculate best edge for display
   const getBestProp = (props) => {
     if (filterProp !== 'all') {
       return props.find(p => p.prop_type === filterProp) || props[0];
     }
-    return props.reduce((best, p) => 
-      Math.abs(parseFloat(p.edge) || 0) > Math.abs(parseFloat(best.edge) || 0) ? p : best
-    , props[0]);
+    return props.reduce((best, p) => (p.edge || 0) > (best.edge || 0) ? p : best, props[0]);
+  };
+
+  const saveAllBets = async () => {
+    setSavingBets(true);
+    try {
+      const result = await api.saveAllNBABets({ min_edge: 0.02, bankroll });
+      alert(`Saved ${result.bets_saved} bets!`);
+      loadData();
+    } catch (e) {
+      alert('Error saving bets: ' + e.message);
+    }
+    setSavingBets(false);
   };
 
   if (loading) {
@@ -329,60 +346,92 @@ const NBAPredictions = () => {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <span>🏀</span> NBA Props
+            {data?.odds_available && <span className="badge bg-emerald-500/20 text-emerald-400 text-xs">LIVE ODDS</span>}
           </h1>
           <p className="text-slate-400 text-sm mt-0.5">
-            {data?.total_games || data?.games?.length || 0} games • {filteredPlayers.length} players • {allPredictions.length} props
+            {data?.total_games || data?.games?.length || 0} games • {stats.total} props • {stats.withOdds} with odds • {stats.bets} bets
           </p>
         </div>
         <div className="flex gap-2">
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="input-field"
-          />
-          <button onClick={loadData} className="btn-primary text-sm">Refresh</button>
+          <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="input-field" />
+          <button onClick={loadData} className="btn-secondary text-sm">Refresh</button>
+          {stats.bets > 0 && (
+            <button onClick={saveAllBets} disabled={savingBets} className="btn-primary text-sm">
+              {savingBets ? 'Saving...' : `Save ${stats.bets} Bets`}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Stats Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="card p-3">
+          <p className="text-[10px] text-slate-500 uppercase">Total Props</p>
+          <p className="text-xl font-bold">{stats.total}</p>
+        </div>
+        <div className="card p-3">
+          <p className="text-[10px] text-slate-500 uppercase">With Odds</p>
+          <p className="text-xl font-bold text-emerald-400">{stats.withOdds}</p>
+        </div>
+        <div className="card p-3">
+          <p className="text-[10px] text-slate-500 uppercase">Recommended Bets</p>
+          <p className="text-xl font-bold text-amber-400">{stats.bets}</p>
+        </div>
+        <div className="card p-3">
+          <p className="text-[10px] text-slate-500 uppercase">Total Edge</p>
+          <p className="text-xl font-bold text-emerald-400">+{(stats.totalEdge * 100).toFixed(1)}%</p>
+        </div>
+        <div className="card p-3">
+          <p className="text-[10px] text-slate-500 uppercase">Bankroll</p>
+          <p className="text-xl font-bold">${bankroll.toFixed(0)}</p>
         </div>
       </div>
 
       {/* Filters */}
       <div className="card p-4 flex flex-wrap gap-3 items-end">
-        <div className="flex-1 min-w-[160px]">
+        <div className="flex-1 min-w-[140px]">
           <label className="text-[10px] text-slate-500 uppercase block mb-1">Matchup</label>
           <select value={filterMatchup} onChange={(e) => { setFilterMatchup(e.target.value); setFilterTeam('all'); }} className="input-field w-full">
             <option value="all">All Matchups ({matchups.length})</option>
             {matchups.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
         </div>
-        <div className="flex-1 min-w-[120px]">
+        <div className="flex-1 min-w-[100px]">
           <label className="text-[10px] text-slate-500 uppercase block mb-1">Team</label>
           <select value={filterTeam} onChange={(e) => setFilterTeam(e.target.value)} className="input-field w-full">
-            <option value="all">All Teams ({teams.length})</option>
+            <option value="all">All Teams</option>
             {teams.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
-        <div className="flex-1 min-w-[120px]">
-          <label className="text-[10px] text-slate-500 uppercase block mb-1">Prop Type</label>
+        <div className="flex-1 min-w-[100px]">
+          <label className="text-[10px] text-slate-500 uppercase block mb-1">Prop</label>
           <select value={filterProp} onChange={(e) => setFilterProp(e.target.value)} className="input-field w-full">
             <option value="all">All Props</option>
             {propTypes.map(p => <option key={p} value={p}>{p.toUpperCase()}</option>)}
           </select>
         </div>
-        <div className="flex-1 min-w-[120px]">
-          <label className="text-[10px] text-slate-500 uppercase block mb-1">Sort By</label>
-          <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="input-field w-full">
-            <option value="edge">Best Edge</option>
-            <option value="player">Player Name</option>
-            <option value="team">Team</option>
+        <div className="flex-1 min-w-[100px]">
+          <label className="text-[10px] text-slate-500 uppercase block mb-1">Edge Class</label>
+          <select value={filterEdge} onChange={(e) => setFilterEdge(e.target.value)} className="input-field w-full">
+            <option value="all">All</option>
+            <option value="EXCEPTIONAL">Exceptional (8%+)</option>
+            <option value="STRONG">Strong (5-8%)</option>
+            <option value="GOOD">Good (3-5%)</option>
+            <option value="MODERATE">Moderate (2-3%)</option>
           </select>
         </div>
         <div className="flex-1 min-w-[100px]">
-          <label className="text-[10px] text-slate-500 uppercase block mb-1">Order</label>
-          <select value={sortDir} onChange={(e) => setSortDir(e.target.value)} className="input-field w-full">
-            <option value="desc">High → Low</option>
-            <option value="asc">Low → High</option>
+          <label className="text-[10px] text-slate-500 uppercase block mb-1">Sort</label>
+          <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="input-field w-full">
+            <option value="edge">Best Edge</option>
+            <option value="player">Player</option>
+            <option value="team">Team</option>
           </select>
         </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={showBetsOnly} onChange={(e) => setShowBetsOnly(e.target.checked)} className="rounded" />
+          <span className="text-sm text-slate-400">Bets Only</span>
+        </label>
       </div>
 
       {/* Table */}
@@ -394,9 +443,11 @@ const NBAPredictions = () => {
                 <th>Player</th>
                 <th>Team</th>
                 <th>Matchup</th>
-                <th>Props</th>
-                <th className="text-right">Best Edge</th>
-                <th className="text-center">Top Call</th>
+                <th>Prop</th>
+                <th className="text-right">Predicted</th>
+                <th className="text-center">Odds</th>
+                <th className="text-center">Edge</th>
+                <th className="text-right">Bet Size</th>
                 <th className="text-center">History</th>
               </tr>
             </thead>
@@ -407,11 +458,11 @@ const NBAPredictions = () => {
                 const bestProp = getBestProp(player.props);
                 const propsToShow = filterProp !== 'all' 
                   ? player.props.filter(p => p.prop_type === filterProp)
-                  : player.props;
+                  : player.props.filter(p => p.has_odds).sort((a, b) => (b.edge || 0) - (a.edge || 0)).slice(0, 3);
                 
                 return (
                   <React.Fragment key={uniqueKey}>
-                    <tr className={isExpanded ? 'bg-white/[0.02]' : ''}>
+                    <tr className={`${isExpanded ? 'bg-white/[0.02]' : ''} ${bestProp.is_bet_recommended ? 'border-l-2 border-l-emerald-500' : ''}`}>
                       <td className="font-medium">{player.player_name}</td>
                       <td className="text-slate-400">{player.team_abbrev}</td>
                       <td className="text-slate-400 text-xs">{player.matchup}</td>
@@ -421,29 +472,37 @@ const NBAPredictions = () => {
                             <span 
                               key={i}
                               className={`text-[10px] px-1.5 py-0.5 rounded ${
-                                prop.recommended_bet === 'over' 
+                                prop.bet_direction === 'over' 
                                   ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
                                   : 'bg-red-500/20 text-red-400 border border-red-500/30'
                               }`}
-                              title={`Pred: ${parseFloat(prop.predicted_value || 0).toFixed(1)} | Line: ${prop.line} | Edge: ${prop.edge}`}
+                              title={`Line: ${prop.dk_line} | Edge: ${((prop.edge || 0) * 100).toFixed(1)}%`}
                             >
-                              {prop.prop_type?.toUpperCase()}: {parseFloat(prop.predicted_value || 0).toFixed(1)} {prop.recommended_bet === 'over' ? '↑' : '↓'}
+                              {prop.prop_type?.toUpperCase()}: {prop.bet_direction === 'over' ? '↑' : '↓'} {prop.dk_line}
                             </span>
                           ))}
                         </div>
                       </td>
-                      <td className={`text-right font-mono ${parseFloat(bestProp.edge || 0) > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {bestProp.edge ? (parseFloat(bestProp.edge) > 0 ? '+' : '') + parseFloat(bestProp.edge).toFixed(1) : '-'}
+                      <td className="text-right font-mono">{parseFloat(bestProp.predicted_value || 0).toFixed(1)}</td>
+                      <td className="text-center">
+                        <OddsDisplay prediction={bestProp} />
                       </td>
                       <td className="text-center">
-                        <span className={`badge ${bestProp.recommended_bet === 'over' ? 'badge-bet' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
-                          {bestProp.prop_type?.toUpperCase()} {bestProp.recommended_bet?.toUpperCase()}
-                        </span>
+                        {bestProp.edge_class && (
+                          <EdgeBadge edge={bestProp.edge || 0} edgeClass={bestProp.edge_class} />
+                        )}
+                      </td>
+                      <td className="text-right">
+                        {bestProp.is_bet_recommended && (
+                          <span className="font-mono text-emerald-400">
+                            ${((bestProp.bet_pct || 0.02) * bankroll).toFixed(0)}
+                          </span>
+                        )}
                       </td>
                       <td className="text-center">
                         <button
-                          onClick={() => togglePlayer(isExpanded ? null : uniqueKey)}
-                          className="text-emerald-400 hover:text-emerald-300 text-xs px-2 py-1 rounded hover:bg-white/5 transition-colors"
+                          onClick={() => setExpandedPlayer(isExpanded ? null : uniqueKey)}
+                          className="text-emerald-400 hover:text-emerald-300 text-xs px-2 py-1 rounded hover:bg-white/5"
                         >
                           {isExpanded ? 'Hide' : 'View'}
                         </button>
@@ -471,6 +530,22 @@ const NBAPredictions = () => {
             <p>No players found for selected filters</p>
           </div>
         )}
+      </div>
+
+      {/* Legend */}
+      <div className="card p-4">
+        <h3 className="font-semibold mb-3">Edge Classes</h3>
+        <div className="flex flex-wrap gap-2">
+          <span className={`badge border ${EDGE_COLORS.EXCEPTIONAL}`}>EXCEPTIONAL 8%+</span>
+          <span className={`badge border ${EDGE_COLORS.STRONG}`}>STRONG 5-8%</span>
+          <span className={`badge border ${EDGE_COLORS.GOOD}`}>GOOD 3-5%</span>
+          <span className={`badge border ${EDGE_COLORS.MODERATE}`}>MODERATE 2-3%</span>
+          <span className={`badge border ${EDGE_COLORS.MARGINAL}`}>MARGINAL 0-2%</span>
+          <span className={`badge border ${EDGE_COLORS.NEGATIVE}`}>NEGATIVE &lt;0%</span>
+        </div>
+        <p className="text-xs text-slate-500 mt-3">
+          Edge = Model Probability - Implied Probability from odds. Only MODERATE or better edges are recommended as bets.
+        </p>
       </div>
     </div>
   );
