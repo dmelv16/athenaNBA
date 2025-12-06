@@ -120,6 +120,19 @@ class ApiService {
     return this.fetch(`/nba/bets/performance?days=${days}`);
   }
 
+  // NEW: Game Lines endpoints
+  async getNBAGameLinesToday() {
+    return this.fetch('/nba/game-lines/today');
+  }
+
+  async getNBAGameLinesByDate(date) {
+    return this.fetch(`/nba/game-lines/date/${date}`);
+  }
+
+  async getNBAGameOdds(gameId) {
+    return this.fetch(`/nba/games/${gameId}/odds`);
+  }
+
   // ============================================
   // NHL Endpoints
   // ============================================

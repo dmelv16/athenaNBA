@@ -554,8 +554,53 @@ def nba_accuracy():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/nba/game-lines/today', methods=['GET'])
+def nba_game_lines_today():
+    """Get all game lines (moneyline, spread, totals) for today's games"""
+    if not ODDS_AVAILABLE:
+        return jsonify({'error': 'Odds not available'}), 503
+    try:
+        game_lines = odds_manager.get_game_lines_for_date(date.today())
+        return jsonify(serialize({
+            'date': str(date.today()),
+            'games': game_lines,
+            'count': len(game_lines)
+        }))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/nba/game-lines/date/<target_date>', methods=['GET'])
+def nba_game_lines_by_date(target_date):
+    """Get game lines for a specific date"""
+    if not ODDS_AVAILABLE:
+        return jsonify({'error': 'Odds not available'}), 503
+    try:
+        parsed = datetime.strptime(target_date, '%Y-%m-%d').date()
+        game_lines = odds_manager.get_game_lines_for_date(parsed)
+        return jsonify(serialize({
+            'date': target_date,
+            'games': game_lines,
+            'count': len(game_lines)
+        }))
+    except ValueError:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/nba/games/<game_id>/odds', methods=['GET'])
+def nba_game_odds(game_id):
+    """Get all odds (game lines + player props) for a specific game"""
+    if not ODDS_AVAILABLE:
+        return jsonify({'error': 'Odds not available'}), 503
+    try:
+        odds = odds_manager.get_odds_for_game(game_id)
+        return jsonify(serialize(odds))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 # ============================================
-# NHL Endpoints (unchanged)
+# NHL Endpoints
 # ============================================
 @app.route('/api/nhl/predictions/today', methods=['GET'])
 def nhl_today():
@@ -607,7 +652,9 @@ def nhl_accuracy():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# NHL Tracking endpoints (unchanged from original)
+# ============================================
+# NHL Tracking endpoints
+# ============================================
 @app.route('/api/tracking/stats', methods=['GET'])
 def get_tracking_stats():
     if not TRACKER_AVAILABLE:
@@ -718,7 +765,20 @@ def get_bet_results():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/tracking/performance', methods=['GET'])
+def get_tracking_performance():
+    if not TRACKER_AVAILABLE:
+        return jsonify({'error': 'Tracking not available'}), 503
+    try:
+        days = request.args.get('days', 30, type=int)
+        data = tracker.get_performance_data(days=days)
+        return jsonify(serialize(data))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ============================================
 # Bankroll
+# ============================================
 @app.route('/api/bankroll/status', methods=['GET'])
 def get_bankroll_status():
     return jsonify({
@@ -739,6 +799,9 @@ def update_bankroll():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# ============================================
+# Main
+# ============================================
 if __name__ == '__main__':
     print("\n" + "=" * 60)
     print("🎯 UNIFIED SPORTS PREDICTIONS API - Enhanced")
@@ -747,6 +810,16 @@ if __name__ == '__main__':
     print(f"🏒 NHL: {'Available' if NHL_AVAILABLE else 'Not Available'}")
     print(f"💰 Odds: {'Available' if ODDS_AVAILABLE else 'Not Available'}")
     print(f"📊 Tracking: {'Available' if TRACKER_AVAILABLE else 'Not Available'}")
+    print("\nEndpoints:")
+    print("  GET  /api/health")
+    print("  GET  /api/nba/predictions/today")
+    print("  GET  /api/nba/odds/today")
+    print("  GET  /api/nba/predictions/with-edge")
+    print("  POST /api/nba/bets/save-all")
+    print("  GET  /api/nba/bets/pending")
+    print("  GET  /api/nba/bets/history")
+    print("  POST /api/nba/bets/result")
+    print("  GET  /api/nba/bets/performance")
     print("\n🌐 Running on http://localhost:5001")
     print("=" * 60 + "\n")
     

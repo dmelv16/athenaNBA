@@ -566,6 +566,156 @@ class NBAOddsManager:
             cur.execute(query, params)
             return cur.fetchall()
     
+    def get_game_lines_for_date(self, game_date: date = None) -> list:
+        """Get all game lines (moneyline, spread, total) for a specific date"""
+        if game_date is None:
+            game_date = date.today()
+        
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Get games for the date
+            cur.execute("""
+                SELECT 
+                    g.id as game_db_id,
+                    g.dk_event_id,
+                    g.name as game_name,
+                    g.home_team,
+                    g.away_team,
+                    g.start_time_mt,
+                    gl.line_type,
+                    gl.team,
+                    gl.label,
+                    gl.line,
+                    gl.odds_american,
+                    gl.odds_decimal,
+                    gl.dk_selection_id
+                FROM games g
+                LEFT JOIN game_lines gl ON g.id = gl.game_id
+                WHERE DATE(g.start_time_mt) = %s
+                ORDER BY g.start_time_mt, g.id, gl.line_type, gl.team
+            """, (game_date,))
+            
+            rows = cur.fetchall()
+        
+        # Group by game
+        games = {}
+        for row in rows:
+            game_id = row['dk_event_id']
+            if game_id not in games:
+                games[game_id] = {
+                    'game_id': game_id,
+                    'game_db_id': row['game_db_id'],
+                    'game_name': row['game_name'],
+                    'home_team': row['home_team'],
+                    'away_team': row['away_team'],
+                    'start_time': row['start_time_mt'],
+                    'moneyline': {'home': None, 'away': None},
+                    'spread': {'home': None, 'away': None},
+                    'total': {'over': None, 'under': None}
+                }
+            
+            if row['line_type'] == 'moneyline':
+                if row['team'] == row['home_team']:
+                    games[game_id]['moneyline']['home'] = {
+                        'team': row['team'],
+                        'odds_american': row['odds_american'],
+                        'odds_decimal': float(row['odds_decimal']) if row['odds_decimal'] else None
+                    }
+                else:
+                    games[game_id]['moneyline']['away'] = {
+                        'team': row['team'],
+                        'odds_american': row['odds_american'],
+                        'odds_decimal': float(row['odds_decimal']) if row['odds_decimal'] else None
+                    }
+            
+            elif row['line_type'] == 'spread':
+                spread_data = {
+                    'team': row['team'],
+                    'line': float(row['line']) if row['line'] else None,
+                    'odds_american': row['odds_american'],
+                    'odds_decimal': float(row['odds_decimal']) if row['odds_decimal'] else None
+                }
+                if row['team'] == row['home_team']:
+                    games[game_id]['spread']['home'] = spread_data
+                else:
+                    games[game_id]['spread']['away'] = spread_data
+            
+            elif row['line_type'] == 'total':
+                total_data = {
+                    'line': float(row['line']) if row['line'] else None,
+                    'odds_american': row['odds_american'],
+                    'odds_decimal': float(row['odds_decimal']) if row['odds_decimal'] else None
+                }
+                if row['label'] and 'over' in row['label'].lower():
+                    games[game_id]['total']['over'] = total_data
+                elif row['label'] and 'under' in row['label'].lower():
+                    games[game_id]['total']['under'] = total_data
+        
+        return list(games.values())
+    
+    def get_odds_for_game(self, dk_event_id: str) -> dict:
+        """Get all odds (game lines + player props) for a specific game"""
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Get game info
+            cur.execute("""
+                SELECT id, dk_event_id, name, home_team, away_team, start_time_mt
+                FROM games WHERE dk_event_id = %s
+            """, (dk_event_id,))
+            game = cur.fetchone()
+            
+            if not game:
+                return {'error': 'Game not found'}
+            
+            # Get game lines
+            cur.execute("""
+                SELECT line_type, team, label, line, odds_american, odds_decimal
+                FROM game_lines WHERE game_id = %s
+                ORDER BY line_type, team
+            """, (game['id'],))
+            game_lines = cur.fetchall()
+            
+            # Get player props
+            cur.execute("""
+                SELECT player_name, prop_type, label, line, odds_american, odds_decimal
+                FROM player_props WHERE game_id = %s
+                ORDER BY player_name, prop_type
+            """, (game['id'],))
+            player_props = cur.fetchall()
+        
+        # Organize game lines
+        organized_lines = {
+            'moneyline': {'home': None, 'away': None},
+            'spread': {'home': None, 'away': None},
+            'total': {'over': None, 'under': None}
+        }
+        
+        for line in game_lines:
+            lt = line['line_type']
+            if lt == 'moneyline':
+                side = 'home' if line['team'] == game['home_team'] else 'away'
+                organized_lines['moneyline'][side] = dict(line)
+            elif lt == 'spread':
+                side = 'home' if line['team'] == game['home_team'] else 'away'
+                organized_lines['spread'][side] = dict(line)
+            elif lt == 'total':
+                side = 'over' if line['label'] and 'over' in line['label'].lower() else 'under'
+                organized_lines['total'][side] = dict(line)
+        
+        # Organize player props by player
+        players = {}
+        for prop in player_props:
+            name = prop['player_name']
+            if name not in players:
+                players[name] = []
+            players[name].append(dict(prop))
+        
+        return {
+            'game': dict(game),
+            'game_lines': organized_lines,
+            'player_props': players,
+            'player_count': len(players),
+            'prop_count': len(player_props)
+        }
+
     def get_performance_stats(self, days: int = 30) -> dict:
         """Get overall performance statistics"""
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
