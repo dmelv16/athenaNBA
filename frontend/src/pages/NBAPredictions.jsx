@@ -1,170 +1,154 @@
-// src/pages/NBAPredictions.jsx - Enhanced NBA Predictions Page
-import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+// src/pages/NBAPredictions.jsx
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import api from '../services/api';
 
-const PlayerHistoryDropdown = ({ playerId, playerName, onClose }) => {
+const PlayerHistoryPanel = ({ playerId, playerName, onClose }) => {
   const [history, setHistory] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadHistory = async () => {
+    const load = async () => {
       try {
-        const data = await api.getNBAPlayerHistory(playerId, 5);
-        setHistory(data.history);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+        // Request more history records to ensure we get 5 unique games
+        const data = await api.getNBAPlayerHistory(playerId, 20);
+        console.log('Player history loaded:', data);
+        setHistory(data.history || []);
+      } catch (e) { console.error(e); }
+      setLoading(false);
     };
-    loadHistory();
+    load();
   }, [playerId]);
 
+  // Group history by game date
+  const groupedHistory = useMemo(() => {
+    if (!history || history.length === 0) return [];
+    const grouped = {};
+    history.forEach(h => {
+      const key = `${h.prediction_date}-${h.opponent_abbrev}`;
+      if (!grouped[key]) {
+        grouped[key] = { date: h.prediction_date, opponent: h.opponent_abbrev, props: [] };
+      }
+      grouped[key].props.push(h);
+    });
+    // Sort by date descending and return all games (up to 5)
+    return Object.values(grouped)
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .slice(0, 5);
+  }, [history]);
+
+  if (loading) {
+    return (
+      <td colSpan="8" className="player-expansion p-4">
+        <div className="flex justify-center"><div className="spinner w-6 h-6"></div></div>
+      </td>
+    );
+  }
+
   return (
-    <div className="absolute left-0 mt-2 w-96 z-50 glass-card p-4 shadow-2xl animate-fade-in">
-      <div className="flex items-center justify-between mb-3">
-        <h4 className="font-semibold text-emerald-400">{playerName} - Last 5 Predictions</h4>
-        <button onClick={onClose} className="text-slate-400 hover:text-white">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+    <td colSpan="8" className="player-expansion p-4 bg-slate-800/50">
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-sm font-semibold text-emerald-400">
+          {playerName} - Last 5 Games Performance
+        </span>
+        <button onClick={onClose} className="text-slate-400 hover:text-white text-xs">Close ✕</button>
       </div>
       
-      {loading ? (
-        <div className="flex justify-center py-4">
-          <div className="spinner w-6 h-6"></div>
-        </div>
-      ) : history?.length > 0 ? (
-        <div className="space-y-2 max-h-64 overflow-y-auto">
-          {history.map((h, idx) => (
-            <div key={idx} className={`p-3 rounded-lg ${h.hit === true ? 'bg-emerald-500/10 border border-emerald-500/20' : h.hit === false ? 'bg-red-500/10 border border-red-500/20' : 'bg-slate-700/50'}`}>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-400">{h.prediction_date}</span>
-                <span className="font-medium uppercase">{h.prop_type}</span>
+      {groupedHistory.length > 0 ? (
+        <div className="space-y-3">
+          {groupedHistory.map((game, i) => (
+            <div key={i} className="bg-slate-700/30 rounded-lg p-3">
+              <div className="flex items-center gap-3 mb-2 pb-2 border-b border-slate-600/50">
+                <span className="text-xs text-slate-500">{game.date}</span>
+                <span className="text-xs text-slate-400">vs {game.opponent}</span>
               </div>
-              <div className="flex items-center justify-between mt-1">
-                <div>
-                  <span className="text-slate-400 text-xs">vs {h.opponent_abbrev}</span>
-                </div>
-                <div className="text-right">
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-400">Pred: <span className="text-white">{parseFloat(h.predicted_value).toFixed(1)}</span></span>
-                    <span className="text-slate-600">|</span>
-                    <span className="text-slate-400">Actual: <span className={h.hit === true ? 'text-emerald-400' : h.hit === false ? 'text-red-400' : 'text-white'}>{h.actual_value?.toFixed(1) || '-'}</span></span>
-                  </div>
-                  {h.line && (
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      Line: {h.line} | Call: <span className={h.recommended_bet === 'over' ? 'text-emerald-400' : 'text-red-400'}>{h.recommended_bet?.toUpperCase()}</span>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {game.props.map((prop, j) => {
+                  const predicted = parseFloat(prop.predicted_value) || 0;
+                  const actual = prop.actual_value;
+                  const line = parseFloat(prop.line) || 0;
+                  const hit = prop.hit;
+                  const diff = actual !== null ? (actual - predicted).toFixed(1) : null;
+                  
+                  return (
+                    <div 
+                      key={j} 
+                      className={`p-2 rounded text-xs ${
+                        hit === true ? 'bg-emerald-500/10 border border-emerald-500/20' : 
+                        hit === false ? 'bg-red-500/10 border border-red-500/20' : 
+                        'bg-slate-600/30'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="uppercase font-semibold text-slate-300">{prop.prop_type}</span>
+                        {hit !== null && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                            hit ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                          }`}>
+                            {hit ? 'HIT' : 'MISS'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-0.5 text-[11px]">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Line:</span>
+                          <span className="text-slate-400">{line}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Predicted:</span>
+                          <span className="text-slate-300">{predicted.toFixed(1)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Actual:</span>
+                          <span className={`font-medium ${
+                            hit === true ? 'text-emerald-400' : 
+                            hit === false ? 'text-red-400' : 'text-white'
+                          }`}>
+                            {actual !== null ? actual.toFixed(1) : '-'}
+                          </span>
+                        </div>
+                        {diff !== null && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Diff:</span>
+                            <span className={parseFloat(diff) >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                              {parseFloat(diff) >= 0 ? '+' : ''}{diff}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex justify-between mt-1 pt-1 border-t border-slate-600/50">
+                          <span className="text-slate-500">Call:</span>
+                          <span className={`font-bold ${
+                            prop.recommended_bet === 'over' ? 'text-emerald-400' : 'text-red-400'
+                          }`}>
+                            {prop.recommended_bet?.toUpperCase()}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  )}
-                </div>
+                  );
+                })}
               </div>
-              {h.hit !== null && (
-                <div className="mt-1 text-right">
-                  <span className={`badge ${h.hit ? 'badge-success' : 'badge-danger'}`}>
-                    {h.hit ? '✓ HIT' : '✗ MISS'}
-                  </span>
-                </div>
-              )}
             </div>
           ))}
         </div>
       ) : (
-        <p className="text-slate-400 text-center py-4">No history available</p>
+        <p className="text-slate-500 text-sm text-center py-4">No history available</p>
       )}
-    </div>
+    </td>
   );
 };
-
-const PredictionRow = ({ pred, showHistory, onToggleHistory }) => {
-  const confidence = (pred.confidence * 100).toFixed(0);
-  const confClass = confidence >= 70 ? 'confidence-high' : confidence >= 60 ? 'confidence-medium' : 'confidence-low';
-  
-  return (
-    <tr className="table-row relative">
-      <td className="table-cell">
-        <button 
-          onClick={() => onToggleHistory(pred.player_id, pred.player_name)}
-          className="text-left hover:text-emerald-400 transition-colors font-medium"
-        >
-          {pred.player_name}
-          <svg className="w-3 h-3 inline ml-1 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-        {showHistory === pred.player_id && (
-          <PlayerHistoryDropdown 
-            playerId={pred.player_id} 
-            playerName={pred.player_name}
-            onClose={() => onToggleHistory(null)}
-          />
-        )}
-      </td>
-      <td className="table-cell text-slate-400">{pred.team_abbrev}</td>
-      <td className="table-cell text-slate-400">vs {pred.opponent_abbrev}</td>
-      <td className="table-cell uppercase font-semibold text-slate-300">{pred.prop_type}</td>
-      <td className="table-cell text-right font-mono">{parseFloat(pred.predicted_value).toFixed(1)}</td>
-      <td className="table-cell text-right font-mono text-slate-400">{pred.line || '-'}</td>
-      <td className={`table-cell text-right font-mono ${pred.edge > 0 ? 'edge-positive' : pred.edge < 0 ? 'edge-negative' : ''}`}>
-        {pred.edge ? (pred.edge > 0 ? '+' : '') + parseFloat(pred.edge).toFixed(1) : '-'}
-      </td>
-      <td className={`table-cell text-right font-semibold ${confClass}`}>
-        {confidence}%
-      </td>
-      <td className="table-cell text-center">
-        {pred.recommended_bet && (
-          <span className={`badge ${pred.recommended_bet === 'over' ? 'badge-success' : 'badge-danger'}`}>
-            {pred.recommended_bet.toUpperCase()}
-          </span>
-        )}
-      </td>
-    </tr>
-  );
-};
-
-const GameCard = ({ game, isSelected, onClick }) => (
-  <button
-    onClick={onClick}
-    className={`w-full text-left p-4 rounded-xl transition-all duration-200 ${
-      isSelected 
-        ? 'bg-emerald-500/20 border border-emerald-500/50 shadow-lg shadow-emerald-500/10' 
-        : 'bg-slate-800/50 border border-slate-700/50 hover:bg-slate-800 hover:border-slate-600'
-    }`}
-  >
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="font-semibold text-sm">
-          {game.away_team || 'Away'} @ {game.home_team || 'Home'}
-        </p>
-        <p className="text-xs text-slate-500 mt-1">
-          {game.player_predictions?.length || 0} props
-        </p>
-      </div>
-      {isSelected && (
-        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-      )}
-    </div>
-  </button>
-);
 
 const NBAPredictions = () => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [selectedGame, setSelectedGame] = useState(null);
-  const [filterProp, setFilterProp] = useState('all');
+  const [filterMatchup, setFilterMatchup] = useState('all');
   const [filterTeam, setFilterTeam] = useState('all');
-  const [sortBy, setSortBy] = useState('confidence');
+  const [filterProp, setFilterProp] = useState('all');
+  const [sortBy, setSortBy] = useState('edge');
   const [sortDir, setSortDir] = useState('desc');
-  const [showHistory, setShowHistory] = useState(null);
+  const [expandedPlayer, setExpandedPlayer] = useState(null);
 
-  useEffect(() => {
-    loadPredictions();
-  }, [selectedDate]);
-
-  const loadPredictions = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const today = new Date().toISOString().split('T')[0];
@@ -172,213 +156,319 @@ const NBAPredictions = () => {
         ? await api.getNBATodayPredictions()
         : await api.getNBAPredictionsByDate(selectedDate);
       setData(res);
-      if (res?.games?.length > 0) {
-        setSelectedGame(res.games[0].game_id);
+      console.log('NBA Data loaded:', res);
+    } catch (e) { 
+      console.error('Failed to load NBA data:', e); 
+    }
+    setLoading(false);
+  }, [selectedDate]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Flatten all predictions and track game participants
+  const { allPredictions, gameTeams } = useMemo(() => {
+    if (!data) return { allPredictions: [], gameTeams: {} };
+    
+    let predictions = [];
+    const teams = {}; // matchup -> [team1, team2]
+    
+    if (data.games && Array.isArray(data.games)) {
+      data.games.forEach(game => {
+        const away = game.away_team_abbrev || game.away_team;
+        const home = game.home_team_abbrev || game.home_team;
+        const matchup = `${away} @ ${home}`;
+        teams[matchup] = [away, home];
+        
+        (game.player_predictions || []).forEach(p => {
+          predictions.push({
+            ...p,
+            matchup,
+            game_id: game.game_id || p.game_id
+          });
+        });
+      });
+    } else if (data.player_predictions && Array.isArray(data.player_predictions)) {
+      data.player_predictions.forEach(p => {
+        const matchup = `${p.opponent_abbrev || 'OPP'} @ ${p.team_abbrev || 'TEAM'}`;
+        if (!teams[matchup]) teams[matchup] = [p.opponent_abbrev, p.team_abbrev];
+        predictions.push({ ...p, matchup });
+      });
+    } else if (Array.isArray(data)) {
+      data.forEach(p => {
+        const matchup = `${p.opponent_abbrev || 'OPP'} @ ${p.team_abbrev || 'TEAM'}`;
+        if (!teams[matchup]) teams[matchup] = [p.opponent_abbrev, p.team_abbrev];
+        predictions.push({ ...p, matchup });
+      });
+    }
+    
+    return { allPredictions: predictions, gameTeams: teams };
+  }, [data]);
+
+  // Group predictions by player
+  const playerGroups = useMemo(() => {
+    const groups = {};
+    allPredictions.forEach(pred => {
+      const key = `${pred.player_id}-${pred.matchup}`;
+      if (!groups[key]) {
+        groups[key] = {
+          player_id: pred.player_id,
+          player_name: pred.player_name,
+          team_abbrev: pred.team_abbrev,
+          matchup: pred.matchup,
+          props: []
+        };
       }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+      groups[key].props.push(pred);
+    });
+    return Object.values(groups);
+  }, [allPredictions]);
+
+  // Unique values for filters
+  const matchups = useMemo(() => {
+    return Object.keys(gameTeams).sort();
+  }, [gameTeams]);
+
+  const teams = useMemo(() => {
+    // If a matchup is selected, only show teams from that matchup
+    if (filterMatchup !== 'all' && gameTeams[filterMatchup]) {
+      return gameTeams[filterMatchup].filter(Boolean).sort();
     }
+    // Otherwise show all teams
+    const set = new Set();
+    Object.values(gameTeams).forEach(([t1, t2]) => {
+      if (t1) set.add(t1);
+      if (t2) set.add(t2);
+    });
+    return Array.from(set).sort();
+  }, [gameTeams, filterMatchup]);
+
+  const propTypes = useMemo(() => {
+    const set = new Set(allPredictions.map(p => p.prop_type).filter(Boolean));
+    return Array.from(set).sort();
+  }, [allPredictions]);
+
+  // Filter and sort player groups
+  const filteredPlayers = useMemo(() => {
+    let result = [...playerGroups];
+    
+    // Matchup filter - show BOTH teams in the matchup
+    if (filterMatchup !== 'all') {
+      const teamsInMatchup = gameTeams[filterMatchup] || [];
+      result = result.filter(p => 
+        p.matchup === filterMatchup || teamsInMatchup.includes(p.team_abbrev)
+      );
+    }
+    
+    // Team filter
+    if (filterTeam !== 'all') {
+      result = result.filter(p => p.team_abbrev === filterTeam);
+    }
+    
+    // Prop filter - only include players who have that prop
+    if (filterProp !== 'all') {
+      result = result.filter(p => p.props.some(prop => prop.prop_type === filterProp));
+    }
+    
+    // Sort
+    result.sort((a, b) => {
+      let aVal, bVal;
+      switch (sortBy) {
+        case 'edge':
+          aVal = Math.max(...a.props.map(p => Math.abs(parseFloat(p.edge) || 0)));
+          bVal = Math.max(...b.props.map(p => Math.abs(parseFloat(p.edge) || 0)));
+          break;
+        case 'player':
+          aVal = a.player_name || '';
+          bVal = b.player_name || '';
+          break;
+        case 'team':
+          aVal = a.team_abbrev || '';
+          bVal = b.team_abbrev || '';
+          break;
+        default:
+          aVal = Math.max(...a.props.map(p => Math.abs(parseFloat(p.edge) || 0)));
+          bVal = Math.max(...b.props.map(p => Math.abs(parseFloat(p.edge) || 0)));
+      }
+      if (typeof aVal === 'string') {
+        return sortDir === 'desc' ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
+      }
+      return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+    });
+    
+    return result;
+  }, [playerGroups, filterMatchup, filterTeam, filterProp, sortBy, sortDir, gameTeams]);
+
+  const togglePlayer = (playerId) => {
+    setExpandedPlayer(prev => prev === playerId ? null : playerId);
   };
 
-  const handleToggleHistory = useCallback((playerId) => {
-    setShowHistory(prev => prev === playerId ? null : playerId);
-  }, []);
-
-  // Get predictions for selected game or all
-  const getDisplayPredictions = () => {
-    if (!data) return [];
-    
-    if (selectedGame && data.games) {
-      const game = data.games.find(g => g.game_id === selectedGame);
-      return game?.player_predictions || [];
+  // Calculate best edge for display
+  const getBestProp = (props) => {
+    if (filterProp !== 'all') {
+      return props.find(p => p.prop_type === filterProp) || props[0];
     }
-    
-    return data?.games?.flatMap(g => g.player_predictions || []) || 
-           data?.player_predictions || [];
+    return props.reduce((best, p) => 
+      Math.abs(parseFloat(p.edge) || 0) > Math.abs(parseFloat(best.edge) || 0) ? p : best
+    , props[0]);
   };
 
-  const allPredictions = getDisplayPredictions();
-  const propTypes = [...new Set(allPredictions.map(p => p.prop_type))].sort();
-  const teams = [...new Set(allPredictions.map(p => p.team_abbrev))].sort();
-
-  // Filter and sort
-  let filtered = allPredictions.filter(p => {
-    if (filterProp !== 'all' && p.prop_type !== filterProp) return false;
-    if (filterTeam !== 'all' && p.team_abbrev !== filterTeam) return false;
-    return true;
-  });
-
-  filtered.sort((a, b) => {
-    let aVal, bVal;
-    switch (sortBy) {
-      case 'confidence': aVal = a.confidence; bVal = b.confidence; break;
-      case 'edge': aVal = Math.abs(a.edge || 0); bVal = Math.abs(b.edge || 0); break;
-      case 'player': aVal = a.player_name; bVal = b.player_name; break;
-      case 'prediction': aVal = a.predicted_value; bVal = b.predicted_value; break;
-      default: aVal = a.confidence; bVal = b.confidence;
-    }
-    if (sortDir === 'desc') return bVal > aVal ? 1 : -1;
-    return aVal > bVal ? 1 : -1;
-  });
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="spinner w-10 h-10"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-5 animate-in">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
-            <span className="text-4xl">🏀</span>
-            NBA Predictions
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <span>🏀</span> NBA Props
           </h1>
-          <p className="text-slate-400 mt-1">
-            {data?.total_games || 0} games, {allPredictions.length} player props
+          <p className="text-slate-400 text-sm mt-0.5">
+            {data?.total_games || data?.games?.length || 0} games • {filteredPlayers.length} players • {allPredictions.length} props
           </p>
         </div>
-        
-        <div className="flex items-center gap-3">
+        <div className="flex gap-2">
           <input
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
             className="input-field"
           />
-          <button onClick={loadPredictions} className="btn-primary">
-            Refresh
-          </button>
+          <button onClick={loadData} className="btn-primary text-sm">Refresh</button>
         </div>
       </div>
-
-      {/* Games Selector */}
-      {data?.games?.length > 0 && (
-        <div className="glass-card p-4">
-          <h3 className="text-sm font-semibold text-slate-400 mb-3">SELECT GAME</h3>
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            <button
-              onClick={() => setSelectedGame(null)}
-              className={`flex-shrink-0 px-4 py-2 rounded-lg transition-all ${
-                selectedGame === null 
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50' 
-                  : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700'
-              }`}
-            >
-              All Games
-            </button>
-            {data.games.map(game => (
-              <GameCard
-                key={game.game_id}
-                game={game}
-                isSelected={selectedGame === game.game_id}
-                onClick={() => setSelectedGame(game.game_id)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Filters */}
-      <div className="glass-card p-4">
-        <div className="flex flex-wrap gap-4 items-end">
-          <div className="flex-1 min-w-[150px]">
-            <label className="text-xs text-slate-500 block mb-1.5">Prop Type</label>
-            <select
-              value={filterProp}
-              onChange={(e) => setFilterProp(e.target.value)}
-              className="input-field w-full"
-            >
-              <option value="all">All Props</option>
-              {propTypes.map(p => (
-                <option key={p} value={p}>{p.toUpperCase()}</option>
-              ))}
-            </select>
-          </div>
-          
-          <div className="flex-1 min-w-[150px]">
-            <label className="text-xs text-slate-500 block mb-1.5">Team</label>
-            <select
-              value={filterTeam}
-              onChange={(e) => setFilterTeam(e.target.value)}
-              className="input-field w-full"
-            >
-              <option value="all">All Teams</option>
-              {teams.map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-          
-          <div className="flex-1 min-w-[150px]">
-            <label className="text-xs text-slate-500 block mb-1.5">Sort By</label>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="input-field w-full"
-            >
-              <option value="confidence">Confidence</option>
-              <option value="edge">Edge</option>
-              <option value="player">Player Name</option>
-              <option value="prediction">Prediction</option>
-            </select>
-          </div>
-          
-          <div className="flex-1 min-w-[150px]">
-            <label className="text-xs text-slate-500 block mb-1.5">Order</label>
-            <select
-              value={sortDir}
-              onChange={(e) => setSortDir(e.target.value)}
-              className="input-field w-full"
-            >
-              <option value="desc">Highest First</option>
-              <option value="asc">Lowest First</option>
-            </select>
-          </div>
-          
-          <div className="text-sm text-slate-500 whitespace-nowrap">
-            Showing {filtered.length} of {allPredictions.length}
-          </div>
+      <div className="card p-4 flex flex-wrap gap-3 items-end">
+        <div className="flex-1 min-w-[160px]">
+          <label className="text-[10px] text-slate-500 uppercase block mb-1">Matchup</label>
+          <select value={filterMatchup} onChange={(e) => { setFilterMatchup(e.target.value); setFilterTeam('all'); }} className="input-field w-full">
+            <option value="all">All Matchups ({matchups.length})</option>
+            {matchups.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+        <div className="flex-1 min-w-[120px]">
+          <label className="text-[10px] text-slate-500 uppercase block mb-1">Team</label>
+          <select value={filterTeam} onChange={(e) => setFilterTeam(e.target.value)} className="input-field w-full">
+            <option value="all">All Teams ({teams.length})</option>
+            {teams.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div className="flex-1 min-w-[120px]">
+          <label className="text-[10px] text-slate-500 uppercase block mb-1">Prop Type</label>
+          <select value={filterProp} onChange={(e) => setFilterProp(e.target.value)} className="input-field w-full">
+            <option value="all">All Props</option>
+            {propTypes.map(p => <option key={p} value={p}>{p.toUpperCase()}</option>)}
+          </select>
+        </div>
+        <div className="flex-1 min-w-[120px]">
+          <label className="text-[10px] text-slate-500 uppercase block mb-1">Sort By</label>
+          <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="input-field w-full">
+            <option value="edge">Best Edge</option>
+            <option value="player">Player Name</option>
+            <option value="team">Team</option>
+          </select>
+        </div>
+        <div className="flex-1 min-w-[100px]">
+          <label className="text-[10px] text-slate-500 uppercase block mb-1">Order</label>
+          <select value={sortDir} onChange={(e) => setSortDir(e.target.value)} className="input-field w-full">
+            <option value="desc">High → Low</option>
+            <option value="asc">Low → High</option>
+          </select>
         </div>
       </div>
 
-      {/* Predictions Table */}
-      <div className="glass-card overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="spinner w-12 h-12"></div>
-          </div>
-        ) : filtered.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th className="table-header table-cell text-left">Player</th>
-                  <th className="table-header table-cell text-left">Team</th>
-                  <th className="table-header table-cell text-left">Opponent</th>
-                  <th className="table-header table-cell text-left">Prop</th>
-                  <th className="table-header table-cell text-right">Prediction</th>
-                  <th className="table-header table-cell text-right">Line</th>
-                  <th className="table-header table-cell text-right">Edge</th>
-                  <th className="table-header table-cell text-right">Confidence</th>
-                  <th className="table-header table-cell text-center">Call</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((pred, idx) => (
-                  <PredictionRow 
-                    key={`${pred.player_id}-${pred.prop_type}-${idx}`} 
-                    pred={pred}
-                    showHistory={showHistory}
-                    onToggleHistory={handleToggleHistory}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="text-center py-16 text-slate-500">
-            <span className="text-5xl mb-4 block">🏀</span>
-            <p className="text-lg">No predictions found</p>
-            <p className="text-sm mt-1">Try adjusting your filters</p>
+      {/* Table */}
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th>Team</th>
+                <th>Matchup</th>
+                <th>Props</th>
+                <th className="text-right">Best Edge</th>
+                <th className="text-center">Top Call</th>
+                <th className="text-center">History</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredPlayers.map((player, idx) => {
+                const uniqueKey = `${player.player_id}-${idx}`;
+                const isExpanded = expandedPlayer === uniqueKey;
+                const bestProp = getBestProp(player.props);
+                const propsToShow = filterProp !== 'all' 
+                  ? player.props.filter(p => p.prop_type === filterProp)
+                  : player.props;
+                
+                return (
+                  <React.Fragment key={uniqueKey}>
+                    <tr className={isExpanded ? 'bg-white/[0.02]' : ''}>
+                      <td className="font-medium">{player.player_name}</td>
+                      <td className="text-slate-400">{player.team_abbrev}</td>
+                      <td className="text-slate-400 text-xs">{player.matchup}</td>
+                      <td>
+                        <div className="flex flex-wrap gap-1">
+                          {propsToShow.map((prop, i) => (
+                            <span 
+                              key={i}
+                              className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                prop.recommended_bet === 'over' 
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                              }`}
+                              title={`Pred: ${parseFloat(prop.predicted_value || 0).toFixed(1)} | Line: ${prop.line} | Edge: ${prop.edge}`}
+                            >
+                              {prop.prop_type?.toUpperCase()}: {parseFloat(prop.predicted_value || 0).toFixed(1)} {prop.recommended_bet === 'over' ? '↑' : '↓'}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className={`text-right font-mono ${parseFloat(bestProp.edge || 0) > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {bestProp.edge ? (parseFloat(bestProp.edge) > 0 ? '+' : '') + parseFloat(bestProp.edge).toFixed(1) : '-'}
+                      </td>
+                      <td className="text-center">
+                        <span className={`badge ${bestProp.recommended_bet === 'over' ? 'badge-bet' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                          {bestProp.prop_type?.toUpperCase()} {bestProp.recommended_bet?.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="text-center">
+                        <button
+                          onClick={() => togglePlayer(isExpanded ? null : uniqueKey)}
+                          className="text-emerald-400 hover:text-emerald-300 text-xs px-2 py-1 rounded hover:bg-white/5 transition-colors"
+                        >
+                          {isExpanded ? 'Hide' : 'View'}
+                        </button>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr>
+                        <PlayerHistoryPanel 
+                          playerId={player.player_id} 
+                          playerName={player.player_name}
+                          onClose={() => setExpandedPlayer(null)} 
+                        />
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        
+        {filteredPlayers.length === 0 && (
+          <div className="p-12 text-center text-slate-400">
+            <span className="text-4xl block mb-2">🏀</span>
+            <p>No players found for selected filters</p>
           </div>
         )}
       </div>

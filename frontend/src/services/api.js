@@ -32,9 +32,7 @@ class ApiService {
     return this.fetch('/sports');
   }
 
-  // ============================================
   // NBA Endpoints
-  // ============================================
   async getNBATodayPredictions() {
     return this.fetch('/nba/predictions/today');
   }
@@ -51,11 +49,6 @@ class ApiService {
     return this.fetch(`/nba/predictions/best-bets?min_confidence=${minConfidence}&min_edge=${minEdge}`);
   }
 
-  async getNBAParlays(date = null) {
-    const dateParam = date ? `?date=${date}` : '';
-    return this.fetch(`/nba/predictions/parlays${dateParam}`);
-  }
-
   async getNBAGameDetail(gameId) {
     return this.fetch(`/nba/games/${gameId}`);
   }
@@ -64,16 +57,13 @@ class ApiService {
     return this.fetch(`/nba/accuracy?days=${days}`);
   }
 
-  // NEW: Player history
   async getNBAPlayerHistory(playerId, limit = 5, propType = null) {
     let url = `/nba/players/${playerId}/history?limit=${limit}`;
     if (propType) url += `&prop_type=${propType}`;
     return this.fetch(url);
   }
 
-  // ============================================
-  // NHL Endpoints - Enhanced
-  // ============================================
+  // NHL Endpoints
   async getNHLTodayPredictions() {
     return this.fetch('/nhl/predictions/today');
   }
@@ -100,6 +90,19 @@ class ApiService {
 
   async getNHLResults(days = 30) {
     return this.fetch(`/nhl/results/history?days=${days}`);
+  }
+
+  // Get current bankroll status
+  async getBankrollStatus() {
+    return this.fetch('/bankroll/status');
+  }
+
+  // Update bankroll
+  async updateBankroll(amount) {
+    return this.fetch('/bankroll/update', {
+      method: 'POST',
+      body: JSON.stringify({ bankroll: amount })
+    });
   }
 }
 

@@ -1,115 +1,62 @@
-// src/pages/GameDetail.jsx - Enhanced Game Detail Page
+// src/pages/GameDetail.jsx
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../services/api';
 
-const PlayerHistoryModal = ({ player, onClose }) => {
+const PlayerHistoryPanel = ({ playerId, onClose }) => {
   const [history, setHistory] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadHistory = async () => {
+    const load = async () => {
       try {
-        const data = await api.getNBAPlayerHistory(player.player_id, 5);
-        setHistory(data.history);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+        const data = await api.getNBAPlayerHistory(playerId, 5);
+        setHistory(data.history || []);
+      } catch (e) { console.error(e); }
+      setLoading(false);
     };
-    loadHistory();
-  }, [player.player_id]);
+    load();
+  }, [playerId]);
+
+  if (loading) {
+    return (
+      <td colSpan="8" className="bg-slate-800/30 p-4">
+        <div className="flex justify-center"><div className="spinner w-6 h-6"></div></div>
+      </td>
+    );
+  }
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="glass-card max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="p-6 border-b border-slate-700/50">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold">{player.player_name}</h2>
-              <p className="text-slate-400 text-sm">{player.team_abbrev} - Last 5 Predictions</p>
-            </div>
-            <button onClick={onClose} className="p-2 hover:bg-slate-700 rounded-lg transition-colors">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-        
-        <div className="p-6 overflow-y-auto max-h-[60vh]">
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="spinner w-8 h-8"></div>
-            </div>
-          ) : history?.length > 0 ? (
-            <div className="space-y-3">
-              {history.map((h, idx) => (
-                <div 
-                  key={idx} 
-                  className={`p-4 rounded-xl border ${
-                    h.hit === true 
-                      ? 'bg-emerald-500/10 border-emerald-500/30' 
-                      : h.hit === false 
-                        ? 'bg-red-500/10 border-red-500/30' 
-                        : 'bg-slate-800/50 border-slate-700/50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-slate-400">{h.prediction_date}</span>
-                      <span className="badge badge-info uppercase">{h.prop_type}</span>
-                    </div>
-                    {h.hit !== null && (
-                      <span className={`badge ${h.hit ? 'badge-success' : 'badge-danger'}`}>
-                        {h.hit ? '✓ HIT' : '✗ MISS'}
-                      </span>
-                    )}
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">vs {h.opponent_abbrev}</span>
-                    <div className="flex items-center gap-4 text-sm">
-                      <div>
-                        <span className="text-slate-500">Predicted:</span>
-                        <span className="ml-1 font-semibold">{parseFloat(h.predicted_value).toFixed(1)}</span>
-                      </div>
-                      {h.line && (
-                        <div>
-                          <span className="text-slate-500">Line:</span>
-                          <span className="ml-1">{h.line}</span>
-                        </div>
-                      )}
-                      <div>
-                        <span className="text-slate-500">Actual:</span>
-                        <span className={`ml-1 font-semibold ${
-                          h.hit === true ? 'text-emerald-400' : h.hit === false ? 'text-red-400' : ''
-                        }`}>
-                          {h.actual_value?.toFixed(1) || 'Pending'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {h.recommended_bet && (
-                    <div className="mt-2 text-sm">
-                      <span className="text-slate-500">Call:</span>
-                      <span className={`ml-1 font-medium ${h.recommended_bet === 'over' ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {h.recommended_bet.toUpperCase()}
-                      </span>
-                      <span className="text-slate-500 ml-2">({(h.confidence * 100).toFixed(0)}% confidence)</span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-center text-slate-400 py-8">No prediction history available</p>
-          )}
-        </div>
+    <td colSpan="8" className="bg-slate-800/30 p-4 border-t border-white/5">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm font-semibold text-emerald-400">Last 5 Predictions</span>
+        <button onClick={onClose} className="text-slate-400 hover:text-white text-xs">Close ✕</button>
       </div>
-    </div>
+      {history && history.length > 0 ? (
+        <div className="grid grid-cols-5 gap-2">
+          {history.map((h, i) => (
+            <div key={i} className={`p-3 rounded-lg text-center ${h.hit === true ? 'bg-emerald-500/10 border border-emerald-500/20' : h.hit === false ? 'bg-red-500/10 border border-red-500/20' : 'bg-slate-700/30'}`}>
+              <p className="text-[10px] text-slate-500 mb-1">{h.prediction_date}</p>
+              <p className="text-xs text-slate-400 mb-1">vs {h.opponent_abbrev}</p>
+              <p className="text-xs uppercase font-semibold text-slate-300 mb-1">{h.prop_type}</p>
+              <div className="text-sm space-y-0.5">
+                <p className="text-slate-400">Line: {h.line}</p>
+                <p className={h.hit === true ? 'text-emerald-400' : h.hit === false ? 'text-red-400' : ''}>
+                  Actual: {h.actual_value?.toFixed(1) || '-'}
+                </p>
+              </div>
+              {h.hit !== null && (
+                <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded ${h.hit ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                  {h.hit ? 'HIT' : 'MISS'}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-slate-500 text-sm text-center">No history available</p>
+      )}
+    </td>
   );
 };
 
@@ -118,42 +65,39 @@ const GameDetail = ({ sport = 'nba' }) => {
   const [loading, setLoading] = useState(true);
   const [game, setGame] = useState(null);
   const [error, setError] = useState(null);
-  const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [expandedPlayer, setExpandedPlayer] = useState(null);
 
   useEffect(() => {
-    loadGameData();
+    loadGame();
   }, [gameId]);
 
-  const loadGameData = async () => {
+  const loadGame = async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await api.getNBAGameDetail(gameId);
       setGame(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+    } catch (e) {
+      setError(e.message);
     }
+    setLoading(false);
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="spinner w-12 h-12"></div>
+        <div className="spinner w-10 h-10"></div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="glass-card p-8 text-center">
-        <span className="text-5xl mb-4 block">⚠️</span>
-        <h2 className="text-xl font-bold text-red-400">Error Loading Game</h2>
-        <p className="text-slate-400 mt-2">{error}</p>
-        <Link to={`/${sport}`} className="btn-primary mt-4 inline-block">
-          ← Back to Predictions
-        </Link>
+      <div className="card p-8 text-center">
+        <span className="text-4xl mb-3 block">⚠️</span>
+        <h2 className="text-lg font-bold text-red-400">Error Loading Game</h2>
+        <p className="text-slate-400 mt-1">{error}</p>
+        <Link to="/nba" className="btn-primary mt-4 inline-block text-sm">← Back to NBA</Link>
       </div>
     );
   }
@@ -162,68 +106,54 @@ const GameDetail = ({ sport = 'nba' }) => {
   const awayTeam = game?.team_predictions?.[0]?.away_team_abbrev || 'Away';
   
   const playersByTeam = (game?.player_predictions || []).reduce((acc, pred) => {
-    const team = pred.team_abbrev;
+    const team = pred.team_abbrev || 'Unknown';
     if (!acc[team]) acc[team] = [];
     acc[team].push(pred);
     return acc;
   }, {});
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-5 animate-in">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm text-slate-400">
-        <Link to="/" className="hover:text-white transition-colors">Dashboard</Link>
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-        <Link to={`/${sport}`} className="hover:text-white transition-colors">{sport.toUpperCase()}</Link>
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-        <span className="text-white">Game {gameId}</span>
+        <Link to="/" className="hover:text-white">Dashboard</Link>
+        <span>/</span>
+        <Link to="/nba" className="hover:text-white">NBA</Link>
+        <span>/</span>
+        <span className="text-white">Game</span>
       </nav>
 
       {/* Game Header */}
-      <div className="glass-card p-8">
-        <div className="flex flex-col md:flex-row items-center justify-center gap-8">
+      <div className="card p-6">
+        <div className="flex items-center justify-center gap-8">
           <div className="text-center">
-            <p className="text-4xl font-bold">{awayTeam}</p>
-            <p className="text-slate-500 mt-1">Away</p>
-          </div>
-          <div className="flex flex-col items-center">
-            <span className="text-3xl text-slate-600">@</span>
-            <span className="text-xs text-slate-500 mt-1">Game ID: {gameId}</span>
+            <p className="text-3xl font-bold">{awayTeam}</p>
+            <p className="text-xs text-slate-500 mt-1">Away</p>
           </div>
           <div className="text-center">
-            <p className="text-4xl font-bold">{homeTeam}</p>
-            <p className="text-slate-500 mt-1">Home</p>
+            <span className="text-slate-600 text-2xl">@</span>
+            <p className="text-[10px] text-slate-500 mt-1">Game {gameId}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-3xl font-bold">{homeTeam}</p>
+            <p className="text-xs text-slate-500 mt-1">Home</p>
           </div>
         </div>
       </div>
 
       {/* Team Predictions */}
       {game?.team_predictions?.length > 0 && (
-        <div className="glass-card p-6">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <span className="text-xl">📊</span>
-            Team Predictions
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="card p-4">
+          <h3 className="font-semibold mb-3 flex items-center gap-2">📊 Team Predictions</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {game.team_predictions.map((pred, idx) => (
-              <div key={idx} className="bg-slate-800/50 rounded-xl p-5">
-                <div className="flex justify-between items-center mb-3">
-                  <span className="text-slate-400 uppercase text-sm">{pred.prop_type}</span>
-                  <span className={`badge ${pred.confidence >= 0.7 ? 'badge-success' : 'badge-warning'}`}>
-                    {(pred.confidence * 100).toFixed(0)}% confidence
-                  </span>
+              <div key={idx} className="bg-slate-800/50 rounded-lg p-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-slate-400 uppercase text-xs">{pred.prop_type}</span>
                 </div>
-                <p className="text-3xl font-bold">
-                  {parseFloat(pred.predicted_value).toFixed(1)}
-                </p>
+                <p className="text-2xl font-bold">{parseFloat(pred.predicted_value).toFixed(1)}</p>
                 {pred.line && (
-                  <p className="text-sm text-slate-400 mt-2">
-                    Line: {pred.line} | Edge: {pred.edge > 0 ? '+' : ''}{parseFloat(pred.edge).toFixed(1)}
-                  </p>
+                  <p className="text-xs text-slate-500 mt-1">Line: {pred.line} | Edge: {pred.edge > 0 ? '+' : ''}{parseFloat(pred.edge).toFixed(1)}</p>
                 )}
               </div>
             ))}
@@ -233,94 +163,71 @@ const GameDetail = ({ sport = 'nba' }) => {
 
       {/* Player Predictions by Team */}
       {Object.entries(playersByTeam).map(([team, predictions]) => (
-        <div key={team} className="glass-card overflow-hidden">
-          <div className="bg-slate-800/70 px-6 py-4 border-b border-slate-700/50">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <span className="text-xl">🏀</span>
-              {team} Players
-              <span className="text-sm font-normal text-slate-400">({predictions.length} props)</span>
-            </h2>
+        <div key={team} className="card overflow-hidden">
+          <div className="bg-slate-800/50 px-4 py-3 border-b border-white/5">
+            <h3 className="font-semibold flex items-center gap-2">
+              🏀 {team}
+              <span className="text-xs font-normal text-slate-400">({predictions.length} props)</span>
+            </h3>
           </div>
-          
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th className="table-header table-cell text-left">Player</th>
-                  <th className="table-header table-cell text-left">Prop</th>
-                  <th className="table-header table-cell text-right">Prediction</th>
-                  <th className="table-header table-cell text-right">Line</th>
-                  <th className="table-header table-cell text-right">Edge</th>
-                  <th className="table-header table-cell text-right">Confidence</th>
-                  <th className="table-header table-cell text-center">Call</th>
-                  <th className="table-header table-cell text-center">History</th>
+                  <th>Player</th>
+                  <th>Prop</th>
+                  <th className="text-right">Predicted</th>
+                  <th className="text-right">Line</th>
+                  <th className="text-right">Edge</th>
+                  <th className="text-center">Call</th>
+                  <th className="text-center">History</th>
                 </tr>
               </thead>
               <tbody>
-                {predictions
-                  .sort((a, b) => b.confidence - a.confidence)
-                  .map((pred, idx) => (
-                    <tr key={idx} className="table-row">
-                      <td className="table-cell font-semibold">{pred.player_name}</td>
-                      <td className="table-cell uppercase text-slate-300">{pred.prop_type}</td>
-                      <td className="table-cell text-right font-mono">
-                        {parseFloat(pred.predicted_value).toFixed(1)}
-                      </td>
-                      <td className="table-cell text-right font-mono text-slate-400">
-                        {pred.line || '-'}
-                      </td>
-                      <td className={`table-cell text-right font-mono ${
-                        pred.edge > 0 ? 'edge-positive' : pred.edge < 0 ? 'edge-negative' : ''
-                      }`}>
+                {predictions.sort((a, b) => Math.abs(b.edge || 0) - Math.abs(a.edge || 0)).map((pred, idx) => (
+                  <React.Fragment key={idx}>
+                    <tr className={expandedPlayer === pred.player_id ? 'bg-white/[0.02]' : ''}>
+                      <td className="font-medium">{pred.player_name}</td>
+                      <td className="uppercase text-xs text-slate-300">{pred.prop_type}</td>
+                      <td className="text-right font-mono">{parseFloat(pred.predicted_value).toFixed(1)}</td>
+                      <td className="text-right font-mono text-slate-400">{pred.line || '-'}</td>
+                      <td className={`text-right font-mono ${(pred.edge || 0) > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                         {pred.edge ? (pred.edge > 0 ? '+' : '') + parseFloat(pred.edge).toFixed(1) : '-'}
                       </td>
-                      <td className={`table-cell text-right ${
-                        pred.confidence >= 0.7 ? 'confidence-high' : 
-                        pred.confidence >= 0.6 ? 'confidence-medium' : 'confidence-low'
-                      }`}>
-                        {(pred.confidence * 100).toFixed(0)}%
-                      </td>
-                      <td className="table-cell text-center">
+                      <td className="text-center">
                         {pred.recommended_bet && (
-                          <span className={`badge ${
-                            pred.recommended_bet === 'over' ? 'badge-success' : 'badge-danger'
-                          }`}>
+                          <span className={`badge ${pred.recommended_bet === 'over' ? 'badge-bet' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
                             {pred.recommended_bet.toUpperCase()}
                           </span>
                         )}
                       </td>
-                      <td className="table-cell text-center">
+                      <td className="text-center">
                         <button
-                          onClick={() => setSelectedPlayer(pred)}
-                          className="text-emerald-400 hover:text-emerald-300 transition-colors"
+                          onClick={() => setExpandedPlayer(expandedPlayer === pred.player_id ? null : pred.player_id)}
+                          className="text-emerald-400 hover:text-emerald-300 text-xs px-2 py-1 rounded hover:bg-white/5"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
+                          {expandedPlayer === pred.player_id ? 'Hide' : 'View'}
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    {expandedPlayer === pred.player_id && (
+                      <tr>
+                        <PlayerHistoryPanel playerId={pred.player_id} onClose={() => setExpandedPlayer(null)} />
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
               </tbody>
             </table>
           </div>
         </div>
       ))}
 
-      {/* No Predictions */}
       {(!game?.player_predictions || game.player_predictions.length === 0) && (
-        <div className="glass-card p-16 text-center">
-          <span className="text-5xl mb-4 block">🏀</span>
-          <p className="text-lg text-slate-400">No player predictions available for this game</p>
+        <div className="card p-12 text-center">
+          <span className="text-4xl block mb-2">🏀</span>
+          <p className="text-slate-400">No player predictions for this game</p>
         </div>
-      )}
-
-      {/* Player History Modal */}
-      {selectedPlayer && (
-        <PlayerHistoryModal 
-          player={selectedPlayer} 
-          onClose={() => setSelectedPlayer(null)} 
-        />
       )}
     </div>
   );

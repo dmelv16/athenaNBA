@@ -1,131 +1,76 @@
-// src/pages/Dashboard.jsx - Professional Dashboard
+// src/pages/Dashboard.jsx
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
 
-const StatCard = ({ title, value, subtitle, trend, trendValue, icon, color = 'emerald' }) => {
-  const colorClasses = {
-    emerald: 'from-emerald-500/20 to-emerald-600/5 border-emerald-500/20',
-    blue: 'from-blue-500/20 to-blue-600/5 border-blue-500/20',
-    amber: 'from-amber-500/20 to-amber-600/5 border-amber-500/20',
-    red: 'from-red-500/20 to-red-600/5 border-red-500/20',
-  };
-  
-  const iconColors = {
-    emerald: 'text-emerald-400',
-    blue: 'text-blue-400',
-    amber: 'text-amber-400',
-    red: 'text-red-400',
-  };
-
-  return (
-    <div className={`glass-card p-6 bg-gradient-to-br ${colorClasses[color]}`}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="stat-label">{title}</p>
-          <p className={`stat-value mt-1 ${iconColors[color]}`}>{value}</p>
-          {subtitle && <p className="text-sm text-slate-400 mt-1">{subtitle}</p>}
-          {trend && (
-            <div className={`flex items-center gap-1 mt-2 text-sm ${trend === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                  d={trend === 'up' ? "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" : "M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"} />
-              </svg>
-              <span>{trendValue}</span>
-            </div>
-          )}
-        </div>
-        <div className={`w-12 h-12 rounded-xl bg-slate-800/50 flex items-center justify-center ${iconColors[color]}`}>
-          {icon}
-        </div>
+const StatCard = ({ label, value, sub, color = 'white', icon }) => (
+  <div className="card p-4">
+    <div className="flex items-start justify-between">
+      <div>
+        <p className="stat-label mb-1">{label}</p>
+        <p className={`stat-lg ${color === 'green' ? 'text-emerald-400' : color === 'red' ? 'text-red-400' : 'text-white'}`}>{value}</p>
+        {sub && <p className="text-xs text-slate-500 mt-1">{sub}</p>}
       </div>
+      {icon && <span className="text-2xl opacity-60">{icon}</span>}
     </div>
-  );
-};
+  </div>
+);
 
 const NHLGameCard = ({ game }) => {
-  const edgeClass = game.edge > 0.05 ? 'edge-positive' : game.edge > 0 ? 'text-slate-300' : 'edge-negative';
-  const confidenceClass = game.model_probability >= 0.65 ? 'confidence-high' : 
-                         game.model_probability >= 0.55 ? 'confidence-medium' : 'confidence-low';
+  const isBet = game.action === 'BET' || (game.bet_pct_bankroll && game.bet_pct_bankroll > 0);
+  const betPct = game.bet_pct_bankroll || game.bet_size / 1000 || 0;
+  const edge = game.edge || 0;
+  const prob = game.model_probability || game.home_win_probability || 0.5;
   
   return (
-    <div className="glass-card-hover p-5">
-      <div className="flex items-center justify-between mb-4">
+    <div className={`card p-4 ${isBet ? 'border-emerald-500/30 bg-emerald-500/5' : ''}`}>
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">🏒</span>
-          <span className="text-xs text-slate-500 font-medium">NHL</span>
+          {isBet && <span className="badge-bet">BET</span>}
         </div>
-        {game.action === 'BET' && (
-          <span className="badge-success">RECOMMENDED</span>
-        )}
+        <span className="text-xs text-slate-500">
+          {game.game_time ? new Date(game.game_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
+        </span>
       </div>
       
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-lg font-semibold">{game.away_team}</p>
-            <p className="text-xs text-slate-500">Away</p>
-          </div>
-          <span className="text-slate-600 font-bold">@</span>
-          <div className="text-right">
-            <p className="text-lg font-semibold">{game.home_team}</p>
-            <p className="text-xs text-slate-500">Home</p>
-          </div>
+      <div className="flex items-center justify-between mb-4">
+        <div className="text-center flex-1">
+          <p className="font-bold text-lg">{game.away_team}</p>
+          <p className="text-[10px] text-slate-500 uppercase">Away</p>
         </div>
-        
-        <div className="h-px bg-slate-700/50"></div>
-        
-        <div className="grid grid-cols-3 gap-4 text-center">
-          <div>
-            <p className="text-xs text-slate-500 mb-1">Pick</p>
-            <p className="font-bold text-emerald-400">{game.predicted_winner}</p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-500 mb-1">Edge</p>
-            <p className={`font-bold ${edgeClass}`}>
-              {game.edge > 0 ? '+' : ''}{(game.edge * 100).toFixed(1)}%
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-500 mb-1">Confidence</p>
-            <p className={`font-bold ${confidenceClass}`}>
-              {(game.model_probability * 100).toFixed(0)}%
-            </p>
-          </div>
+        <span className="text-slate-600 text-lg px-3">@</span>
+        <div className="text-center flex-1">
+          <p className="font-bold text-lg">{game.home_team}</p>
+          <p className="text-[10px] text-slate-500 uppercase">Home</p>
         </div>
-        
-        {game.action === 'BET' && (
-          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-400">Suggested Bet</span>
-              <span className="font-bold text-emerald-400">
-                {(game.bet_pct_bankroll * 100).toFixed(1)}% of bankroll
-              </span>
-            </div>
-          </div>
-        )}
       </div>
+      
+      <div className="grid grid-cols-3 gap-2 text-center text-sm">
+        <div className="bg-slate-800/50 rounded-lg py-2">
+          <p className="text-[10px] text-slate-500 mb-0.5">Pick</p>
+          <p className="font-bold text-emerald-400">{game.predicted_winner === 'HOME' ? game.home_team : game.away_team}</p>
+        </div>
+        <div className="bg-slate-800/50 rounded-lg py-2">
+          <p className="text-[10px] text-slate-500 mb-0.5">Edge</p>
+          <p className={`font-bold ${edge > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {edge > 0 ? '+' : ''}{(edge * 100).toFixed(1)}%
+          </p>
+        </div>
+        <div className="bg-slate-800/50 rounded-lg py-2">
+          <p className="text-[10px] text-slate-500 mb-0.5">Prob</p>
+          <p className="font-bold">{(prob * 100).toFixed(0)}%</p>
+        </div>
+      </div>
+      
+      {isBet && (
+        <div className="mt-3 pt-3 border-t border-white/5 flex justify-between items-center">
+          <span className="text-xs text-slate-400">Suggested Stake</span>
+          <span className="font-bold text-emerald-400">{(betPct * 100).toFixed(1)}% bankroll</span>
+        </div>
+      )}
     </div>
   );
 };
-
-const NBAGameCard = ({ game }) => (
-  <Link 
-    to={`/nba/game/${game.game_id}`}
-    className="glass-card-hover p-4 block"
-  >
-    <div className="flex items-center justify-between mb-3">
-      <span className="text-2xl">🏀</span>
-      <span className="text-xs bg-slate-700 px-2 py-1 rounded-full text-slate-300">
-        {game.player_predictions?.length || 0} props
-      </span>
-    </div>
-    <p className="font-semibold">
-      {game.away_team || game.away_team_abbrev} @ {game.home_team || game.home_team_abbrev}
-    </p>
-    <p className="text-sm text-slate-500 mt-1">{game.game_date}</p>
-  </Link>
-);
 
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -133,60 +78,49 @@ const Dashboard = () => {
   const [nbaData, setNbaData] = useState(null);
   const [nhlData, setNhlData] = useState(null);
   const [nhlAccuracy, setNhlAccuracy] = useState(null);
-  const [nbaAccuracy, setNbaAccuracy] = useState(null);
 
   useEffect(() => {
-    loadDashboardData();
+    loadData();
   }, []);
 
-  const loadDashboardData = async () => {
+  const loadData = async () => {
     setLoading(true);
     try {
-      const [healthRes, nbaRes, nhlRes, nhlAccRes, nbaAccRes] = await Promise.allSettled([
+      const [h, nba, nhl, nhlAcc] = await Promise.allSettled([
         api.getHealth(),
         api.getNBATodayPredictions(),
         api.getNHLTodayPredictions(),
         api.getNHLAccuracy(30),
-        api.getNBAAccuracy(30),
       ]);
-
-      if (healthRes.status === 'fulfilled') setHealth(healthRes.value);
-      if (nbaRes.status === 'fulfilled') setNbaData(nbaRes.value);
-      if (nhlRes.status === 'fulfilled') setNhlData(nhlRes.value);
-      if (nhlAccRes.status === 'fulfilled') setNhlAccuracy(nhlAccRes.value);
-      if (nbaAccRes.status === 'fulfilled') setNbaAccuracy(nbaAccRes.value);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+      if (h.status === 'fulfilled') setHealth(h.value);
+      if (nba.status === 'fulfilled') setNbaData(nba.value);
+      if (nhl.status === 'fulfilled') setNhlData(nhl.value);
+      if (nhlAcc.status === 'fulfilled') setNhlAccuracy(nhlAcc.value);
+    } catch (e) { console.error(e); }
+    setLoading(false);
   };
 
-  const nbaAvgAccuracy = nbaAccuracy?.accuracy_by_prop?.reduce((sum, p) => 
-    sum + (p.line_accuracy || 0), 0) / (nbaAccuracy?.accuracy_by_prop?.length || 1) * 100;
-
-  const nhlOverallAccuracy = nhlAccuracy?.overall_accuracy ? nhlAccuracy.overall_accuracy * 100 : null;
+  const nhlGames = nhlData?.games || [];
+  const nhlBets = nhlGames.filter(g => g.action === 'BET' || (g.bet_pct_bankroll && g.bet_pct_bankroll > 0));
+  const nhlAccPct = nhlAccuracy?.overall_accuracy ? (nhlAccuracy.overall_accuracy * 100).toFixed(1) : 'N/A';
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="spinner w-12 h-12"></div>
+        <div className="spinner w-10 h-10"></div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-6 animate-in">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-slate-400 mt-1">Today's predictions overview</p>
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-slate-400 text-sm mt-0.5">{new Date().toLocaleDateString('en-US', {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'})}</p>
         </div>
-        <button 
-          onClick={loadDashboardData}
-          className="btn-primary flex items-center gap-2 self-start"
-        >
+        <button onClick={loadData} className="btn-secondary text-sm flex items-center gap-2">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
@@ -194,144 +128,106 @@ const Dashboard = () => {
         </button>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Stats Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard label="NHL Games Today" value={nhlGames.length} sub={`${nhlBets.length} recommended bets`} icon="🏒" />
+        <StatCard label="NBA Games Today" value={nbaData?.total_games || 0} sub={`${nbaData?.total_player_predictions || 0} player props`} icon="🏀" />
+        <StatCard label="NHL 30-Day Accuracy" value={`${nhlAccPct}%`} color={parseFloat(nhlAccPct) > 52 ? 'green' : 'red'} icon="📊" />
         <StatCard 
-          title="NBA Games Today" 
-          value={nbaData?.total_games || 0}
-          subtitle={`${nbaData?.total_player_predictions || 0} player props`}
-          icon={<span className="text-2xl">🏀</span>}
-          color="amber"
-        />
-        <StatCard 
-          title="NHL Games Today" 
-          value={nhlData?.games?.length || 0}
-          subtitle="Moneyline predictions"
-          icon={<span className="text-2xl">🏒</span>}
-          color="blue"
-        />
-        <StatCard 
-          title="NBA 30-Day Accuracy" 
-          value={nbaAvgAccuracy ? `${nbaAvgAccuracy.toFixed(1)}%` : 'N/A'}
-          subtitle="vs betting lines"
-          trend={nbaAvgAccuracy > 52.4 ? 'up' : 'down'}
-          trendValue={nbaAvgAccuracy > 52.4 ? 'Profitable' : 'Below breakeven'}
-          icon={<span className="text-2xl">🎯</span>}
-          color={nbaAvgAccuracy > 52.4 ? 'emerald' : 'red'}
-        />
-        <StatCard 
-          title="NHL 30-Day Accuracy" 
-          value={nhlOverallAccuracy ? `${nhlOverallAccuracy.toFixed(1)}%` : 'N/A'}
-          subtitle="Game predictions"
-          trend={nhlOverallAccuracy > 52 ? 'up' : 'down'}
-          trendValue={nhlOverallAccuracy > 52 ? 'Profitable' : 'Improving'}
-          icon={<span className="text-2xl">📊</span>}
-          color={nhlOverallAccuracy > 52 ? 'emerald' : 'amber'}
+          label="Total Bets Today" 
+          value={nhlBets.length} 
+          sub={nhlBets.length > 0 ? `Avg edge: ${(nhlBets.reduce((s,g) => s + (g.edge||0), 0) / nhlBets.length * 100).toFixed(1)}%` : 'No bets'} 
+          icon="🎯" 
         />
       </div>
 
-      {/* NHL Best Bets - Featured Section */}
-      {nhlData?.games?.length > 0 && (
-        <div className="glass-card p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">🏒</span>
-              <div>
-                <h2 className="text-xl font-bold">NHL Predictions</h2>
-                <p className="text-sm text-slate-400">Today's game picks with betting recommendations</p>
-              </div>
-            </div>
-            <Link to="/nhl" className="text-emerald-400 hover:text-emerald-300 text-sm font-medium flex items-center gap-1">
-              View All
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </Link>
+      {/* NHL Section */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🏒</span>
+            <h2 className="text-lg font-semibold">NHL Predictions</h2>
           </div>
-          
+          <Link to="/nhl" className="text-emerald-400 hover:text-emerald-300 text-sm font-medium">View All →</Link>
+        </div>
+        
+        {nhlGames.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {nhlData.games.slice(0, 6).map((game, idx) => (
-              <NHLGameCard key={idx} game={game} />
+            {nhlGames.slice(0, 6).map((game, i) => (
+              <NHLGameCard key={game.game_id || i} game={game} />
             ))}
           </div>
-        </div>
+        ) : (
+          <div className="card p-12 text-center">
+            <span className="text-4xl mb-3 block">🏒</span>
+            <p className="text-slate-400">No NHL games scheduled today</p>
+          </div>
+        )}
+      </section>
+
+      {/* NHL Accuracy by Confidence */}
+      {nhlAccuracy?.by_confidence && (
+        <section>
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">NHL Performance by Confidence</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {nhlAccuracy.by_confidence.map(bucket => (
+              <div key={bucket.bucket} className="card p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-slate-300 capitalize">{bucket.bucket} Confidence</span>
+                  <span className="text-xs text-slate-500">{bucket.count} games</span>
+                </div>
+                <p className={`text-2xl font-bold ${bucket.accuracy > 0.55 ? 'text-emerald-400' : bucket.accuracy > 0.50 ? 'text-amber-400' : 'text-red-400'}`}>
+                  {(bucket.accuracy * 100).toFixed(1)}%
+                </p>
+                <div className="mt-2 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full rounded-full ${bucket.accuracy > 0.55 ? 'bg-emerald-500' : bucket.accuracy > 0.50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                    style={{width: `${bucket.accuracy * 100}%`}}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
-      {/* Two Column Layout for NBA */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* NBA Games */}
-        <div className="glass-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">🏀</span>
-              <h2 className="text-lg font-semibold">NBA Games Today</h2>
-            </div>
-            <Link to="/nba" className="text-emerald-400 hover:text-emerald-300 text-sm">
-              View All →
-            </Link>
+      {/* NBA Quick Access */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🏀</span>
+            <h2 className="text-lg font-semibold">NBA Games</h2>
           </div>
-          
-          {nbaData?.games?.length > 0 ? (
-            <div className="grid grid-cols-2 gap-3">
-              {nbaData.games.slice(0, 6).map(game => (
-                <NBAGameCard key={game.game_id} game={game} />
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12 text-slate-500">
-              <span className="text-4xl mb-3 block">🏀</span>
-              <p>No NBA games today</p>
-            </div>
-          )}
+          <Link to="/nba" className="text-emerald-400 hover:text-emerald-300 text-sm font-medium">View Props →</Link>
         </div>
-
-        {/* Performance Overview */}
-        <div className="glass-card p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <span className="text-2xl">📈</span>
-            <h2 className="text-lg font-semibold">Performance Overview</h2>
+        
+        {nbaData?.games?.length > 0 ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {nbaData.games.slice(0, 6).map(game => (
+              <Link key={game.game_id} to={`/nba/game/${game.game_id}`} className="card-hover p-3 text-center">
+                <p className="font-semibold text-sm">{game.away_team_abbrev || game.away_team}</p>
+                <p className="text-slate-500 text-xs">@</p>
+                <p className="font-semibold text-sm">{game.home_team_abbrev || game.home_team}</p>
+                <p className="text-xs text-slate-500 mt-1">{game.player_predictions?.length || 0} props</p>
+              </Link>
+            ))}
           </div>
-          
-          {nbaAccuracy?.accuracy_by_prop && (
-            <div className="space-y-4">
-              {nbaAccuracy.accuracy_by_prop.map(prop => {
-                const accuracy = (prop.line_accuracy || 0) * 100;
-                const isProfitable = accuracy > 52.4;
-                
-                return (
-                  <div key={prop.prop_type}>
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-sm font-medium uppercase text-slate-400">{prop.prop_type}</span>
-                      <span className={`text-sm font-bold ${isProfitable ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {accuracy.toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="progress-bar">
-                      <div 
-                        className={`progress-bar-fill ${isProfitable ? 'bg-emerald-500' : 'bg-red-500'}`}
-                        style={{ width: `${Math.min(accuracy, 100)}%` }}
-                      />
-                    </div>
-                    <p className="text-xs text-slate-500 mt-1">{prop.total_predictions} predictions</p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+        ) : (
+          <div className="card p-8 text-center">
+            <p className="text-slate-400">No NBA games today</p>
+          </div>
+        )}
+      </section>
+
+      {/* Status */}
+      <div className="card p-3 flex items-center justify-between text-xs">
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${health?.status === 'healthy' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+          <span className="text-slate-400">System {health?.status || 'Unknown'}</span>
         </div>
-      </div>
-
-      {/* System Status */}
-      <div className="glass-card p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 rounded-full ${health?.status === 'healthy' ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></div>
-            <span className="text-sm text-slate-400">System Status: {health?.status || 'Unknown'}</span>
-          </div>
-          <div className="flex items-center gap-4 text-sm text-slate-500">
-            <span>NBA: <span className={health?.sports?.nba === 'available' ? 'text-emerald-400' : 'text-red-400'}>{health?.sports?.nba}</span></span>
-            <span>NHL: <span className={health?.sports?.nhl === 'available' ? 'text-emerald-400' : 'text-red-400'}>{health?.sports?.nhl}</span></span>
-          </div>
+        <div className="flex gap-4 text-slate-500">
+          <span>NBA: <span className={health?.sports?.nba === 'available' ? 'text-emerald-400' : 'text-red-400'}>{health?.sports?.nba}</span></span>
+          <span>NHL: <span className={health?.sports?.nhl === 'available' ? 'text-emerald-400' : 'text-red-400'}>{health?.sports?.nhl}</span></span>
         </div>
       </div>
     </div>

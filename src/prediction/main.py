@@ -1125,7 +1125,7 @@ def main():
         upload_to_db=True
     )
     
-    predictions = predictor.run(bankroll=1412.77)
+    predictions = predictor.run(bankroll=1422.19)
 
 if __name__ == "__main__":
     main()
