@@ -6,24 +6,27 @@ const NHLPredictions = () => {
   const [loading, setLoading] = useState(true);
   const [todayData, setTodayData] = useState(null);
   const [historyData, setHistoryData] = useState(null);
+  const [betResults, setBetResults] = useState(null); // NEW: actual bet results
   const [accuracy, setAccuracy] = useState(null);
-  const [summary, setSummary] = useState(null);
+  const [trackingStats, setTrackingStats] = useState(null);
   const [activeTab, setActiveTab] = useState('today');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [today, hist, acc, sum] = await Promise.allSettled([
+      const [today, hist, acc, stats, bets] = await Promise.allSettled([
         api.getNHLTodayPredictions(),
         api.getNHLHistory(30),
         api.getNHLAccuracy(30),
-        api.getNHLSummary(30),
+        api.getTrackingStats(),
+        api.getBetResults(30, 100), // Get actual bet results
       ]);
       if (today.status === 'fulfilled') setTodayData(today.value);
       if (hist.status === 'fulfilled') setHistoryData(hist.value);
       if (acc.status === 'fulfilled') setAccuracy(acc.value);
-      if (sum.status === 'fulfilled') setSummary(sum.value);
+      if (stats.status === 'fulfilled') setTrackingStats(stats.value);
+      if (bets.status === 'fulfilled') setBetResults(bets.value);
     } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
@@ -41,10 +44,8 @@ const NHLPredictions = () => {
     setLoading(false);
   };
 
-  // Helper to determine if a game should be bet on
   const isBetRecommended = (game) => {
     if (game.action === 'BET') return true;
-    // Use the actual bet_pct_bankroll from database
     const betPct = parseFloat(game.bet_pct_bankroll || 0);
     if (betPct > 0) return true;
     const betSize = parseFloat(game.bet_size || 0);
@@ -52,18 +53,14 @@ const NHLPredictions = () => {
     return false;
   };
 
-  // Get bet percentage directly from database field
   const getBetPct = (game) => {
-    // bet_pct_bankroll is stored as a decimal (e.g., 0.025 = 2.5%)
     const betPct = parseFloat(game.bet_pct_bankroll || 0);
     if (betPct > 0) {
-      // If it's already a percentage (> 1), use as is, otherwise multiply by 100
       return betPct > 1 ? betPct.toFixed(1) : (betPct * 100).toFixed(1);
     }
     return '0.0';
   };
 
-  // Get suggested bet amount based on bankroll
   const getBetAmount = (game, bankroll) => {
     const betSize = parseFloat(game.bet_size || 0);
     if (betSize > 0) return betSize.toFixed(2);
@@ -80,19 +77,15 @@ const NHLPredictions = () => {
   const betGames = games.filter(isBetRecommended);
   const skipGames = games.filter(g => !isBetRecommended(g));
 
-  // Calculate current bankroll from summary or use default
-  // In production, this should come from your database/API
-  const currentBankroll = summary?.current_bankroll || summary?.bankroll || 1412.77;
+  const overall = trackingStats?.overall || {};
+  const currentBankroll = trackingStats?.current_bankroll || 1000;
   
-  // Calculate total stake for today's bets
   const totalStakeToday = betGames.reduce((sum, g) => {
     return sum + parseFloat(getBetAmount(g, currentBankroll));
   }, 0);
 
-  // Calculate total expected value
-  const totalEV = betGames.reduce((sum, g) => {
-    return sum + parseFloat(g.expected_value || 0);
-  }, 0);
+  // Use bet_results for history (these have actual results)
+  const historyBets = betResults?.bets || [];
 
   if (loading && !todayData) {
     return (
@@ -124,10 +117,20 @@ const NHLPredictions = () => {
       </div>
 
       {/* Bankroll & Today's Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <div className="card p-3 border-emerald-500/20 bg-emerald-500/5">
-          <p className="text-[10px] text-slate-500 uppercase">Current Bankroll</p>
+          <p className="text-[10px] text-slate-500 uppercase">Bankroll</p>
           <p className="text-xl font-bold text-emerald-400">${currentBankroll.toFixed(2)}</p>
+        </div>
+        <div className="card p-3">
+          <p className="text-[10px] text-slate-500 uppercase">Record</p>
+          <p className="text-xl font-bold">{overall.wins || 0}W - {overall.losses || 0}L</p>
+        </div>
+        <div className="card p-3">
+          <p className="text-[10px] text-slate-500 uppercase">Total P&L</p>
+          <p className={`text-xl font-bold ${(overall.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {(overall.total_pnl || 0) >= 0 ? '+' : ''}${(overall.total_pnl || 0).toFixed(0)}
+          </p>
         </div>
         <div className="card p-3">
           <p className="text-[10px] text-slate-500 uppercase">Today's Bets</p>
@@ -138,15 +141,9 @@ const NHLPredictions = () => {
           <p className="text-xl font-bold text-amber-400">${totalStakeToday.toFixed(2)}</p>
         </div>
         <div className="card p-3">
-          <p className="text-[10px] text-slate-500 uppercase">Expected Value</p>
-          <p className={`text-xl font-bold ${totalEV >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {totalEV >= 0 ? '+' : ''}${totalEV.toFixed(2)}
-          </p>
-        </div>
-        <div className="card p-3">
-          <p className="text-[10px] text-slate-500 uppercase">30-Day Accuracy</p>
-          <p className={`text-xl font-bold ${(accuracy?.overall_accuracy || 0) > 0.52 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {((accuracy?.overall_accuracy || 0) * 100).toFixed(1)}%
+          <p className="text-[10px] text-slate-500 uppercase">Win Rate</p>
+          <p className={`stat-lg ${(overall.win_rate || 0) > 0.52 ? 'text-emerald-400' : 'text-amber-400'}`}>
+            {((overall.win_rate || 0) * 100).toFixed(1)}%
           </p>
         </div>
       </div>
@@ -163,7 +160,7 @@ const NHLPredictions = () => {
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            {tab === 'today' ? "Today's Games" : tab}
+            {tab === 'today' ? "Today's Games" : tab === 'history' ? 'Bet History' : tab}
           </button>
         ))}
       </div>
@@ -301,100 +298,160 @@ const NHLPredictions = () => {
         </div>
       )}
 
-      {/* History Tab */}
-      {activeTab === 'history' && historyData && (
+      {/* History Tab - Now shows only BETS with actual results */}
+      {activeTab === 'history' && (
         <div className="card overflow-hidden">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Matchup</th>
-                <th>Pick</th>
-                <th className="text-right">Prob</th>
-                <th className="text-right">Edge</th>
-                <th className="text-center">Action</th>
-                <th className="text-center">Result</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(historyData.predictions || []).slice(0, 50).map((pred, idx) => (
-                <tr key={idx}>
-                  <td className="text-slate-400 text-sm">{pred.prediction_date}</td>
-                  <td className="font-medium">{pred.away_team} @ {pred.home_team}</td>
-                  <td className="text-emerald-400">
-                    {pred.predicted_winner === 'HOME' ? pred.home_team : pred.away_team}
-                  </td>
-                  <td className="text-right">{((pred.model_probability || 0) * 100).toFixed(0)}%</td>
-                  <td className={`text-right ${(pred.edge || 0) > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>
-                    {(pred.edge || 0) > 0 ? '+' : ''}{((pred.edge || 0) * 100).toFixed(1)}%
-                  </td>
-                  <td className="text-center">
-                    <span className={`badge ${pred.action === 'BET' ? 'badge-bet' : 'badge-skip'}`}>
-                      {pred.action || 'SKIP'}
-                    </span>
-                  </td>
-                  <td className="text-center">
-                    {pred.was_correct !== null && pred.was_correct !== undefined ? (
-                      <span className={pred.was_correct ? 'badge-win' : 'badge-loss'}>
-                        {pred.was_correct ? 'WIN' : 'LOSS'}
-                      </span>
-                    ) : (
-                      <span className="badge-pending">PENDING</span>
-                    )}
-                  </td>
+          {historyBets.length > 0 ? (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Matchup</th>
+                  <th>Pick</th>
+                  <th className="text-center">Score</th>
+                  <th className="text-right">Odds</th>
+                  <th className="text-right">Bet</th>
+                  <th className="text-center">Result</th>
+                  <th className="text-right">P&L</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {historyBets.map((bet, idx) => (
+                  <tr key={bet.game_id || idx}>
+                    <td className="text-slate-400 text-sm">{bet.game_date}</td>
+                    <td className="font-medium">{bet.away_team} @ {bet.home_team}</td>
+                    <td className="text-emerald-400">{bet.predicted_team}</td>
+                    <td className="text-center text-slate-300">
+                      {bet.away_score !== null && bet.home_score !== null 
+                        ? `${bet.away_score} - ${bet.home_score}`
+                        : '-'
+                      }
+                    </td>
+                    <td className="text-right">
+                      {bet.american_odds > 0 ? '+' : ''}{bet.american_odds || '-'}
+                    </td>
+                    <td className="text-right">${parseFloat(bet.bet_size || 0).toFixed(2)}</td>
+                    <td className="text-center">
+                      <span className={bet.bet_result === 'WIN' ? 'badge-win' : 'badge-loss'}>
+                        {bet.bet_result}
+                      </span>
+                    </td>
+                    <td className={`text-right font-semibold ${parseFloat(bet.pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {parseFloat(bet.pnl || 0) >= 0 ? '+' : ''}${parseFloat(bet.pnl || 0).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="p-12 text-center">
+              <span className="text-4xl block mb-2">📊</span>
+              <p className="text-slate-400">No bet history available yet</p>
+            </div>
+          )}
         </div>
       )}
 
       {/* Performance Tab */}
-      {activeTab === 'performance' && accuracy && (
+      {activeTab === 'performance' && (
         <div className="space-y-4">
-          {accuracy.by_confidence && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {accuracy.by_confidence.map((bucket, idx) => (
-                <div key={idx} className="card p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-slate-300 capitalize">{bucket.bucket} Confidence</span>
-                    <span className="text-xs text-slate-500">{bucket.count} games</span>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="card p-4">
+              <p className="stat-label">Total Bets</p>
+              <p className="stat-lg">{overall.total_bets || 0}</p>
+            </div>
+            <div className="card p-4">
+              <p className="stat-label">Win Rate</p>
+              <p className={`stat-lg ${(overall.win_rate || 0) > 0.52 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {((overall.win_rate || 0) * 100).toFixed(1)}%
+              </p>
+            </div>
+            <div className="card p-4">
+              <p className="stat-label">Total P&L</p>
+              <p className={`stat-lg ${(overall.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {(overall.total_pnl || 0) >= 0 ? '+' : ''}${(overall.total_pnl || 0).toFixed(2)}
+              </p>
+            </div>
+            <div className="card p-4">
+              <p className="stat-label">ROI</p>
+              <p className={`stat-lg ${(overall.roi_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {(overall.roi_pct || 0) >= 0 ? '+' : ''}{(overall.roi_pct || 0).toFixed(1)}%
+              </p>
+            </div>
+          </div>
+
+          {/* By Edge Class */}
+          {trackingStats?.by_edge_class && trackingStats.by_edge_class.length > 0 && (
+            <div className="card p-4">
+              <h3 className="font-semibold mb-4">Performance by Edge Class</h3>
+              <div className="space-y-3">
+                {trackingStats.by_edge_class.map((edge, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-3 bg-slate-800/30 rounded-lg">
+                    <div>
+                      <p className="font-semibold">{edge.edge_class}</p>
+                      <p className="text-xs text-slate-500">{edge.bets} bets • {edge.wins}W • Avg Edge: {(edge.avg_edge * 100).toFixed(1)}%</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-xl font-bold ${edge.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {edge.pnl >= 0 ? '+' : ''}${edge.pnl.toFixed(2)}
+                      </p>
+                      <p className="text-xs text-slate-500">{((edge.win_rate || 0) * 100).toFixed(0)}% win rate</p>
+                    </div>
                   </div>
-                  <p className={`text-3xl font-bold ${bucket.accuracy > 0.55 ? 'text-emerald-400' : bucket.accuracy > 0.50 ? 'text-amber-400' : 'text-red-400'}`}>
-                    {(bucket.accuracy * 100).toFixed(1)}%
-                  </p>
-                  <div className="mt-3 h-2 bg-slate-700 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full rounded-full ${bucket.accuracy > 0.55 ? 'bg-emerald-500' : bucket.accuracy > 0.50 ? 'bg-amber-500' : 'bg-red-500'}`}
-                      style={{width: `${bucket.accuracy * 100}%`}}
-                    />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Top Teams */}
+          {trackingStats?.top_teams && trackingStats.top_teams.length > 0 && (
+            <div className="card p-4">
+              <h3 className="font-semibold mb-4">Top Performing Teams</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {trackingStats.top_teams.map((team, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 bg-slate-800/30 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg font-bold text-slate-500">#{i + 1}</span>
+                      <div>
+                        <p className="font-medium">{team.team}</p>
+                        <p className="text-xs text-slate-500">{team.bets} bets • {team.wins}W</p>
+                      </div>
+                    </div>
+                    <p className={`font-bold ${team.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {team.pnl >= 0 ? '+' : ''}${team.pnl.toFixed(2)}
+                    </p>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
           
-          <div className="card p-4">
-            <h3 className="font-semibold mb-4">Understanding the Numbers</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-slate-300">
-              <div>
-                <h4 className="font-semibold text-emerald-400 mb-2">Profitability Thresholds</h4>
-                <ul className="space-y-1 text-slate-400">
-                  <li>• 52.4% accuracy = breakeven at -110 odds</li>
-                  <li>• 55% accuracy ≈ 4.5% ROI</li>
-                  <li>• 60% accuracy ≈ 14% ROI</li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-semibold text-amber-400 mb-2">Key Metrics</h4>
-                <ul className="space-y-1 text-slate-400">
-                  <li>• <strong>Edge:</strong> Model probability minus implied odds</li>
-                  <li>• <strong>Bet %:</strong> Kelly-optimized stake from database</li>
-                  <li>• <strong>EV:</strong> Expected value of the bet</li>
-                </ul>
+          {/* Accuracy by Confidence */}
+          {accuracy?.by_confidence && (
+            <div className="card p-4">
+              <h3 className="font-semibold mb-4">Accuracy by Confidence Level</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {accuracy.by_confidence.map((bucket, idx) => (
+                  <div key={idx} className="bg-slate-800/50 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-slate-300 capitalize">{bucket.bucket}</span>
+                      <span className="text-xs text-slate-500">{bucket.count} games</span>
+                    </div>
+                    <p className={`text-3xl font-bold ${bucket.accuracy > 0.55 ? 'text-emerald-400' : bucket.accuracy > 0.50 ? 'text-amber-400' : 'text-red-400'}`}>
+                      {(bucket.accuracy * 100).toFixed(1)}%
+                    </p>
+                    <div className="mt-3 h-2 bg-slate-700 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full ${bucket.accuracy > 0.55 ? 'bg-emerald-500' : bucket.accuracy > 0.50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                        style={{width: `${bucket.accuracy * 100}%`}}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>

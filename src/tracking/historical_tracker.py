@@ -184,7 +184,7 @@ class HistoricalGameTracker:
                 game_id,
                 season,
                 gameType,
-                CAST(gameDate AS DATE) as gameDate,
+                CAST(CAST(startTimeUTC AS datetimeoffset) AT TIME ZONE 'Mountain Standard Time' AS DATE) as gameDate,
                 venue,
                 gameState,
                 awayTeam_id,
@@ -198,7 +198,7 @@ class HistoricalGameTracker:
             FROM [nhlDB].[schedule].[schedule]
             WHERE gameState IN ('OFF', 'FINAL')
                 AND gameType = 2
-                AND CAST(gameDate AS DATE) BETWEEN ? AND ?
+                AND CAST(CAST(startTimeUTC AS datetimeoffset) AT TIME ZONE 'Mountain Standard Time' AS DATE) BETWEEN ? AND ?
             ORDER BY gameDate ASC
         """
         

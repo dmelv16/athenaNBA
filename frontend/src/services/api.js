@@ -1,4 +1,4 @@
-// src/services/api.js - Enhanced API Service
+// src/services/api.js - Enhanced API Service with Tracking
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
 class ApiService {
@@ -92,16 +92,49 @@ class ApiService {
     return this.fetch(`/nhl/results/history?days=${days}`);
   }
 
-  // Get current bankroll status
+  // Bankroll Endpoints
   async getBankrollStatus() {
     return this.fetch('/bankroll/status');
   }
 
-  // Update bankroll
   async updateBankroll(amount) {
     return this.fetch('/bankroll/update', {
       method: 'POST',
       body: JSON.stringify({ bankroll: amount })
+    });
+  }
+
+  // NEW: Historical Tracking Endpoints
+  async getTrackingPerformance(days = 30) {
+    return this.fetch(`/tracking/performance?days=${days}`);
+  }
+
+  async getBankrollHistory(days = 30) {
+    return this.fetch(`/tracking/bankroll?days=${days}`);
+  }
+
+  async getBetResults(days = 30, limit = 100, result = null) {
+    let url = `/tracking/bets?days=${days}&limit=${limit}`;
+    if (result) url += `&result=${result}`;
+    return this.fetch(url);
+  }
+
+  async getTrackingStats() {
+    return this.fetch('/tracking/stats');
+  }
+
+  async runTrackingUpdate() {
+    return this.fetch('/tracking/update', { method: 'POST' });
+  }
+
+  async runTrackingBackfill(days = 30, resetBankroll = false, startingBankroll = 1000) {
+    return this.fetch('/tracking/backfill', {
+      method: 'POST',
+      body: JSON.stringify({
+        days,
+        reset_bankroll: resetBankroll,
+        starting_bankroll: startingBankroll
+      })
     });
   }
 }

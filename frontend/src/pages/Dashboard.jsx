@@ -3,15 +3,22 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
 
-const StatCard = ({ label, value, sub, color = 'white', icon }) => (
+const StatCard = ({ label, value, sub, color = 'white', icon, trend }) => (
   <div className="card p-4">
     <div className="flex items-start justify-between">
       <div>
         <p className="stat-label mb-1">{label}</p>
-        <p className={`stat-lg ${color === 'green' ? 'text-emerald-400' : color === 'red' ? 'text-red-400' : 'text-white'}`}>{value}</p>
+        <p className={`stat-lg ${color === 'green' ? 'text-emerald-400' : color === 'red' ? 'text-red-400' : color === 'amber' ? 'text-amber-400' : 'text-white'}`}>{value}</p>
         {sub && <p className="text-xs text-slate-500 mt-1">{sub}</p>}
       </div>
-      {icon && <span className="text-2xl opacity-60">{icon}</span>}
+      <div className="flex flex-col items-end">
+        {icon && <span className="text-2xl opacity-60">{icon}</span>}
+        {trend !== undefined && (
+          <span className={`text-xs mt-1 ${trend >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {trend >= 0 ? '↑' : '↓'} {Math.abs(trend).toFixed(1)}%
+          </span>
+        )}
+      </div>
     </div>
   </div>
 );
@@ -65,9 +72,32 @@ const NHLGameCard = ({ game }) => {
       {isBet && (
         <div className="mt-3 pt-3 border-t border-white/5 flex justify-between items-center">
           <span className="text-xs text-slate-400">Suggested Stake</span>
-          <span className="font-bold text-emerald-400">{(betPct * 100).toFixed(1)}% bankroll</span>
+          <span className="font-bold text-emerald-400">{(betPct).toFixed(1)}% bankroll</span>
         </div>
       )}
+    </div>
+  );
+};
+
+const RecentBetCard = ({ bet }) => {
+  const isWin = bet.bet_result === 'WIN';
+  return (
+    <div className={`flex items-center justify-between p-3 rounded-lg ${isWin ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
+      <div className="flex items-center gap-3">
+        <span className={`text-lg ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
+          {isWin ? '✓' : '✗'}
+        </span>
+        <div>
+          <p className="text-sm font-medium">{bet.away_team} @ {bet.home_team}</p>
+          <p className="text-xs text-slate-400">Bet: {bet.predicted_team}</p>
+        </div>
+      </div>
+      <div className="text-right">
+        <p className={`font-bold ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
+          {bet.pnl >= 0 ? '+' : ''}${parseFloat(bet.pnl).toFixed(2)}
+        </p>
+        <p className="text-xs text-slate-500">{bet.game_date}</p>
+      </div>
     </div>
   );
 };
@@ -77,7 +107,8 @@ const Dashboard = () => {
   const [health, setHealth] = useState(null);
   const [nbaData, setNbaData] = useState(null);
   const [nhlData, setNhlData] = useState(null);
-  const [nhlAccuracy, setNhlAccuracy] = useState(null);
+  const [trackingStats, setTrackingStats] = useState(null);
+  const [recentBets, setRecentBets] = useState([]);
 
   useEffect(() => {
     loadData();
@@ -86,23 +117,24 @@ const Dashboard = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [h, nba, nhl, nhlAcc] = await Promise.allSettled([
+      const [h, nba, nhl, stats, bets] = await Promise.allSettled([
         api.getHealth(),
         api.getNBATodayPredictions(),
         api.getNHLTodayPredictions(),
-        api.getNHLAccuracy(30),
+        api.getTrackingStats(),
+        api.getBetResults(7, 10),
       ]);
       if (h.status === 'fulfilled') setHealth(h.value);
       if (nba.status === 'fulfilled') setNbaData(nba.value);
       if (nhl.status === 'fulfilled') setNhlData(nhl.value);
-      if (nhlAcc.status === 'fulfilled') setNhlAccuracy(nhlAcc.value);
+      if (stats.status === 'fulfilled') setTrackingStats(stats.value);
+      if (bets.status === 'fulfilled') setRecentBets(bets.value.bets || []);
     } catch (e) { console.error(e); }
     setLoading(false);
   };
 
   const nhlGames = nhlData?.games || [];
   const nhlBets = nhlGames.filter(g => g.action === 'BET' || (g.bet_pct_bankroll && g.bet_pct_bankroll > 0));
-  const nhlAccPct = nhlAccuracy?.overall_accuracy ? (nhlAccuracy.overall_accuracy * 100).toFixed(1) : 'N/A';
 
   if (loading) {
     return (
@@ -111,6 +143,11 @@ const Dashboard = () => {
       </div>
     );
   }
+
+  const overall = trackingStats?.overall || {};
+  const currentBankroll = trackingStats?.current_bankroll || 1000;
+  const startingBankroll = trackingStats?.starting_bankroll || 1000;
+  const totalReturnPct = trackingStats?.total_return_pct || 0;
 
   return (
     <div className="space-y-6 animate-in">
@@ -128,17 +165,133 @@ const Dashboard = () => {
         </button>
       </div>
 
+      {/* Bankroll Hero Card */}
+      <div className="card p-6 border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-transparent">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <p className="text-slate-400 text-sm">Current Bankroll</p>
+            <p className="text-4xl font-bold text-emerald-400">${currentBankroll.toFixed(2)}</p>
+            <p className="text-sm text-slate-500 mt-1">Started: ${startingBankroll.toFixed(2)}</p>
+          </div>
+          <div className="flex gap-6">
+            <div className="text-center">
+              <p className={`text-2xl font-bold ${totalReturnPct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {totalReturnPct >= 0 ? '+' : ''}{totalReturnPct.toFixed(1)}%
+              </p>
+              <p className="text-xs text-slate-500">Total Return</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold">{overall.total_bets || 0}</p>
+              <p className="text-xs text-slate-500">Total Bets</p>
+            </div>
+            <div className="text-center">
+              <p className={`text-2xl font-bold ${(overall.win_rate || 0) > 0.52 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {((overall.win_rate || 0) * 100).toFixed(1)}%
+              </p>
+              <p className="text-xs text-slate-500">Win Rate</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="NHL Games Today" value={nhlGames.length} sub={`${nhlBets.length} recommended bets`} icon="🏒" />
-        <StatCard label="NBA Games Today" value={nbaData?.total_games || 0} sub={`${nbaData?.total_player_predictions || 0} player props`} icon="🏀" />
-        <StatCard label="NHL 30-Day Accuracy" value={`${nhlAccPct}%`} color={parseFloat(nhlAccPct) > 52 ? 'green' : 'red'} icon="📊" />
         <StatCard 
-          label="Total Bets Today" 
-          value={nhlBets.length} 
-          sub={nhlBets.length > 0 ? `Avg edge: ${(nhlBets.reduce((s,g) => s + (g.edge||0), 0) / nhlBets.length * 100).toFixed(1)}%` : 'No bets'} 
-          icon="🎯" 
+          label="NHL Games Today" 
+          value={nhlGames.length} 
+          sub={`${nhlBets.length} recommended bets`} 
+          icon="🏒" 
         />
+        <StatCard 
+          label="NBA Games Today" 
+          value={nbaData?.total_games || 0} 
+          sub={`${nbaData?.total_player_predictions || 0} player props`} 
+          icon="🏀" 
+        />
+        <StatCard 
+          label="Total P&L" 
+          value={`${(overall.total_pnl || 0) >= 0 ? '+' : ''}$${Math.abs(overall.total_pnl || 0).toFixed(0)}`}
+          color={(overall.total_pnl || 0) >= 0 ? 'green' : 'red'}
+          sub={`ROI: ${(overall.roi_pct || 0).toFixed(1)}%`}
+          icon="💰" 
+        />
+        <StatCard 
+          label="Record" 
+          value={`${overall.wins || 0}W - ${overall.losses || 0}L`}
+          sub={`Avg Edge: ${((overall.avg_edge || 0) * 100).toFixed(1)}%`}
+          icon="📊" 
+        />
+      </div>
+
+      {/* Current Streak & Recent Results */}
+      {trackingStats?.current_streak && (
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold flex items-center gap-2">
+              <span>{trackingStats.current_streak.type === 'WIN' ? '🔥' : '❄️'}</span>
+              Current Streak
+            </h3>
+            <span className={`text-lg font-bold ${trackingStats.current_streak.type === 'WIN' ? 'text-emerald-400' : 'text-red-400'}`}>
+              {trackingStats.current_streak.length} {trackingStats.current_streak.type === 'WIN' ? 'Wins' : 'Losses'}
+            </span>
+          </div>
+          <div className="flex gap-1">
+            {(trackingStats.recent_results || []).slice(0, 10).map((result, i) => (
+              <div 
+                key={i}
+                className={`w-8 h-8 rounded flex items-center justify-center text-xs font-bold ${
+                  result === 'WIN' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                }`}
+              >
+                {result === 'WIN' ? 'W' : 'L'}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Bets */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold flex items-center gap-2">📜 Recent Bets</h3>
+            <Link to="/history" className="text-emerald-400 hover:text-emerald-300 text-sm">View All →</Link>
+          </div>
+          <div className="card p-4 space-y-2">
+            {recentBets.length > 0 ? (
+              recentBets.slice(0, 5).map((bet, i) => (
+                <RecentBetCard key={i} bet={bet} />
+              ))
+            ) : (
+              <p className="text-slate-500 text-center py-4">No recent bets</p>
+            )}
+          </div>
+        </section>
+
+        {/* Top Performing Teams */}
+        {trackingStats?.top_teams && trackingStats.top_teams.length > 0 && (
+          <section>
+            <h3 className="font-semibold flex items-center gap-2 mb-3">🏆 Top Performing Teams</h3>
+            <div className="card p-4">
+              <div className="space-y-2">
+                {trackingStats.top_teams.slice(0, 5).map((team, i) => (
+                  <div key={i} className="flex items-center justify-between p-2 bg-slate-800/30 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg font-bold text-slate-500">#{i + 1}</span>
+                      <span className="font-medium">{team.team}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm">
+                      <span className="text-slate-400">{team.wins}W/{team.bets}B</span>
+                      <span className={`font-bold ${team.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {team.pnl >= 0 ? '+' : ''}${team.pnl.toFixed(0)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
       </div>
 
       {/* NHL Section */}
@@ -165,26 +318,20 @@ const Dashboard = () => {
         )}
       </section>
 
-      {/* NHL Accuracy by Confidence */}
-      {nhlAccuracy?.by_confidence && (
+      {/* Performance by Edge Class */}
+      {trackingStats?.by_edge_class && trackingStats.by_edge_class.length > 0 && (
         <section>
-          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">NHL Performance by Confidence</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {nhlAccuracy.by_confidence.map(bucket => (
-              <div key={bucket.bucket} className="card p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-slate-300 capitalize">{bucket.bucket} Confidence</span>
-                  <span className="text-xs text-slate-500">{bucket.count} games</span>
-                </div>
-                <p className={`text-2xl font-bold ${bucket.accuracy > 0.55 ? 'text-emerald-400' : bucket.accuracy > 0.50 ? 'text-amber-400' : 'text-red-400'}`}>
-                  {(bucket.accuracy * 100).toFixed(1)}%
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">Performance by Edge Class</h3>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {trackingStats.by_edge_class.map((edge, idx) => (
+              <div key={idx} className="card p-3">
+                <p className="text-xs text-slate-500 uppercase mb-1">{edge.edge_class}</p>
+                <p className={`text-xl font-bold ${edge.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {edge.pnl >= 0 ? '+' : ''}${edge.pnl.toFixed(0)}
                 </p>
-                <div className="mt-2 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                  <div 
-                    className={`h-full rounded-full ${bucket.accuracy > 0.55 ? 'bg-emerald-500' : bucket.accuracy > 0.50 ? 'bg-amber-500' : 'bg-red-500'}`}
-                    style={{width: `${bucket.accuracy * 100}%`}}
-                  />
-                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {edge.wins}/{edge.bets} ({(edge.win_rate * 100).toFixed(0)}%)
+                </p>
               </div>
             ))}
           </div>
@@ -228,6 +375,7 @@ const Dashboard = () => {
         <div className="flex gap-4 text-slate-500">
           <span>NBA: <span className={health?.sports?.nba === 'available' ? 'text-emerald-400' : 'text-red-400'}>{health?.sports?.nba}</span></span>
           <span>NHL: <span className={health?.sports?.nhl === 'available' ? 'text-emerald-400' : 'text-red-400'}>{health?.sports?.nhl}</span></span>
+          <span>Tracking: <span className={health?.tracking === 'available' ? 'text-emerald-400' : 'text-red-400'}>{health?.tracking}</span></span>
         </div>
       </div>
     </div>
