@@ -1,6 +1,6 @@
 """
-NBA Odds Fetcher
-Fetches and stores NBA odds from OddsPAPI v4
+NBA Odds Fetcher - Sports Game Odds API
+Fetches and stores NBA odds from api.sportsgameodds.com/v2
 
 Usage:
     # Fetch today's odds
@@ -26,43 +26,36 @@ load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from models.api.odds_client import OddsPAPIClient, PlayerPropLine, GameLine
+from models.api.odds_client import SportsGameOddsClient, PlayerPropLine, GameLine
 from models.api.odds_uploader import OddsUploader
+from models.api.player_matcher import PlayerTeamMatcher
 
 
 class NBAOddsFetcher:
-    """Fetches NBA odds and stores in database"""
+    """Fetches NBA odds from Sports Game Odds API and stores in database"""
     
-    def __init__(self, api_key: str, bookmaker: str = 'pinnacle'):
-        self.client = OddsPAPIClient(api_key, preferred_bookmaker=bookmaker)
+    def __init__(self, api_key: str, bookmaker: str = 'fanduel'):
+        self.client = SportsGameOddsClient(api_key, preferred_bookmaker=bookmaker)
         self.uploader = OddsUploader()
+        self.matcher = PlayerTeamMatcher()
         self.bookmaker = bookmaker
+        
+        # Try to load cached ID mappings
+        cache_path = Path(__file__).parent / 'sgo_match_cache.json'
+        self.matcher.load_match_cache(str(cache_path))
         
         # Initialize reference data
         self._init_reference_data()
     
     def _init_reference_data(self):
-        """Load reference data from API"""
+        """Load reference data - skip API calls since we have DB data"""
         print("\n📚 Loading reference data...")
         
-        # Load sports
-        sports = self.client.get_sports()
-        print(f"  Sports: {len(sports)}")
-        
-        # Load bookmakers
-        bookmakers = self.client.get_bookmakers()
-        if self.bookmaker not in bookmakers:
-            print(f"  ⚠️ Preferred bookmaker '{self.bookmaker}' not found")
-            print(f"  Available: {bookmakers[:10]}...")
-        
-        # Load markets
-        markets = self.client.get_markets()
-        print(f"  Markets: {len(markets)}")
-        print(f"  Player prop markets: {len(self.client.PLAYER_PROP_MARKETS)}")
-        
-        # Load NBA participants
-        participants = self.client.get_participants(sport_id=11)
-        print(f"  Basketball participants: {len(participants)}")
+        # We already have players/teams in our database via PlayerTeamMatcher
+        # Skip loading from API to save rate-limited requests
+        print(f"  Using {len(self.matcher._db_players)} players from database")
+        print(f"  Using {len(self.matcher._db_teams)} teams from database")
+        print(f"  ℹ️ Skipping API player/team fetch to conserve rate limits")
     
     def fetch_daily_odds(self, target_date: date = None) -> Dict:
         """
@@ -79,6 +72,7 @@ class NBAOddsFetcher:
         print(f"{'='*60}")
         print(f"Bookmaker: {self.bookmaker}")
         print(f"Snapshot: {snapshot_time}")
+        print(f"API: Sports Game Odds (sportsgameodds.com)")
         
         results = {
             'date': target_date,
@@ -88,44 +82,67 @@ class NBAOddsFetcher:
             'errors': []
         }
         
-        # Fetch NBA fixtures
-        print(f"\n📅 Fetching NBA fixtures...")
-        fixtures = self.client.get_nba_fixtures(
+        # Fetch NBA events for the date
+        print(f"\n📅 Fetching NBA events...")
+        events = self.client.get_nba_events(
             from_date=target_date,
             to_date=target_date + timedelta(days=1),
-            has_odds=True
+            include_odds=True
         )
         
-        results['fixtures_found'] = len(fixtures)
+        results['fixtures_found'] = len(events)
         
-        if not fixtures:
-            print("  ⚠️ No NBA fixtures found")
+        if not events:
+            print("  ⚠️ No NBA events found")
             self.uploader.log_snapshot(
                 target_date, 0, 0, 0, self.bookmaker,
-                'partial', 'No fixtures found'
+                'partial', 'No events found'
             )
             return results
         
-        print(f"  Found {len(fixtures)} NBA games")
+        print(f"  Found {len(events)} NBA games")
         
         all_game_lines = []
         all_player_props = []
         
-        for fixture in fixtures:
-            fixture_id = fixture.get('fixtureId')
-            p1_name = fixture.get('participant1Name', 'Team 1')
-            p2_name = fixture.get('participant2Name', 'Team 2')
+        for event in events:
+            event_id = event.get('eventID')
+            home_team = event.get('homeTeam', {})
+            away_team = event.get('awayTeam', {})
             
-            print(f"\n  🏀 {p2_name} @ {p1_name}")
-            print(f"     Fixture ID: {fixture_id}")
-            print(f"     Start: {fixture.get('startTime', 'TBD')}")
+            home_name = home_team.get('name', 'Home')
+            away_name = away_team.get('name', 'Away')
+            
+            print(f"\n  🏀 {away_name} @ {home_name}")
+            print(f"     Event ID: {event_id}")
+            print(f"     Start: {event.get('startTime', 'TBD')}")
             
             # Fetch game odds
             try:
-                game_line = self.client.get_game_lines(fixture_id)
+                game_line = self.client.get_game_lines(event_id)
                 if game_line:
-                    # Override date from fixture
-                    start = fixture.get('startTime')
+                    # Map team IDs to our database
+                    home_match = self.matcher.match_team(
+                        home_team.get('teamID', ''), 
+                        home_name
+                    )
+                    away_match = self.matcher.match_team(
+                        away_team.get('teamID', ''),
+                        away_name
+                    )
+                    
+                    # Update with matched IDs
+                    if home_match.db_team_id:
+                        game_line.home_team_id = home_match.db_team_id
+                    if away_match.db_team_id:
+                        game_line.away_team_id = away_match.db_team_id
+                    
+                    # Set abbreviations
+                    game_line.home_team = home_match.db_team_abbrev or self.client.get_team_abbrev(home_name)
+                    game_line.away_team = away_match.db_team_abbrev or self.client.get_team_abbrev(away_name)
+                    
+                    # Override date from event
+                    start = event.get('startTime')
                     if start:
                         try:
                             game_line.game_date = datetime.fromisoformat(
@@ -145,33 +162,49 @@ class NBAOddsFetcher:
                     print(f"     ⚠️ No game lines found")
                     
             except Exception as e:
-                results['errors'].append(f"Game odds {fixture_id}: {e}")
+                results['errors'].append(f"Game odds {event_id}: {e}")
                 print(f"     ⚠️ Error fetching game odds: {e}")
             
             # Fetch player props
             try:
-                props = self.client.get_player_props(fixture_id)
+                props = self.client.get_player_props(event_id)
                 
                 if props:
-                    all_player_props.extend(props)
+                    # Match player IDs to our database
+                    matched_props = []
+                    for prop in props:
+                        player_match = self.matcher.match_player(
+                            prop.player_id or '',
+                            prop.player_name
+                        )
+                        
+                        if player_match.db_player_id:
+                            # Update with matched ID
+                            prop.player_id = player_match.db_player_id
+                            prop.player_name = player_match.db_player_name or prop.player_name
+                        
+                        matched_props.append(prop)
+                    
+                    all_player_props.extend(matched_props)
                     
                     # Count by type
                     prop_counts = {}
-                    for p in props:
+                    for p in matched_props:
                         prop_counts[p.prop_type] = prop_counts.get(p.prop_type, 0) + 1
                     
-                    print(f"     Player props: {len(props)}")
+                    print(f"     Player props: {len(matched_props)}")
                     for pt, cnt in sorted(prop_counts.items()):
                         print(f"       - {pt}: {cnt}")
                 else:
                     print(f"     ⚠️ No player props found")
                     
             except Exception as e:
-                results['errors'].append(f"Player props {fixture_id}: {e}")
+                results['errors'].append(f"Player props {event_id}: {e}")
                 print(f"     ⚠️ Error fetching player props: {e}")
             
-            # Respect rate limits
-            time.sleep(0.5)
+            # Rate limiting - SGO Amateur plan: 10 req/min = 6 sec between
+            # We make 2 requests per event (game lines + props)
+            time.sleep(3)
         
         # Upload to database
         print(f"\n💾 Uploading to database...")
@@ -202,10 +235,14 @@ class NBAOddsFetcher:
             error_msg
         )
         
+        # Save match cache for future runs
+        cache_path = Path(__file__).parent / 'sgo_match_cache.json'
+        self.matcher.save_match_cache(str(cache_path))
+        
         print(f"\n{'='*60}")
         print("SUMMARY")
         print(f"{'='*60}")
-        print(f"Fixtures: {results['fixtures_found']}")
+        print(f"Events: {results['fixtures_found']}")
         print(f"Game odds uploaded: {results['game_odds']}")
         print(f"Player props uploaded: {results['player_props']}")
         if results['errors']:
@@ -216,18 +253,26 @@ class NBAOddsFetcher:
     def run_continuous(self, interval_minutes: int = 30):
         """
         Run continuous fetching for pregame odds updates
+        
+        Note: With Amateur plan (10 req/min, 1000 obj/month),
+        be careful with continuous fetching!
         """
         print(f"\n🔄 Starting continuous odds fetching")
         print(f"   Interval: {interval_minutes} minutes")
+        print(f"   ⚠️ Amateur plan: 1000 objects/month limit!")
         print(f"   Press Ctrl+C to stop\n")
         
         while True:
             try:
                 today = date.today()
+                self.client.request_count = 0  # Reset for tracking
+                
                 self.fetch_daily_odds(today)
                 
-                # Also fetch tomorrow if it's afternoon
-                if datetime.now().hour >= 12:
+                print(f"\n   API requests this cycle: {self.client.request_count}")
+                
+                # Also fetch tomorrow if afternoon (but careful with limits!)
+                if datetime.now().hour >= 18:  # After 6 PM
                     tomorrow = today + timedelta(days=1)
                     self.fetch_daily_odds(tomorrow)
                 
@@ -245,42 +290,34 @@ class NBAOddsFetcher:
     def close(self):
         self.client.close()
         self.uploader.close()
+        self.matcher.close()
 
 
 def main():
-    parser = argparse.ArgumentParser(description='NBA Odds Fetcher')
+    parser = argparse.ArgumentParser(description='NBA Odds Fetcher (Sports Game Odds API)')
     parser.add_argument('--date', type=str, help='Target date (YYYY-MM-DD)')
-    parser.add_argument('--bookmaker', type=str, default='pinnacle',
-                       help='Bookmaker slug (pinnacle, bet365, etc.)')
+    parser.add_argument('--bookmaker', type=str, default='fanduel',
+                       help='Bookmaker ID (fanduel, draftkings, etc.)')
     parser.add_argument('--continuous', action='store_true',
                        help='Run continuous fetching')
-    parser.add_argument('--interval', type=int, default=30,
-                       help='Interval between fetches (minutes)')
+    parser.add_argument('--interval', type=int, default=60,
+                       help='Interval between fetches (minutes) - default 60 for rate limits')
     parser.add_argument('--init-schema', action='store_true',
                        help='Initialize database schema')
-    parser.add_argument('--list-bookmakers', action='store_true',
-                       help='List available bookmakers')
     
     args = parser.parse_args()
     
     # Get API key from environment
-    api_key = os.environ.get('ODDSPAPI_KEY')
+    api_key = os.environ.get('SGO_API_KEY') or os.environ.get('ODDSPAPI_KEY')
     if not api_key:
-        print("Error: ODDSPAPI_KEY environment variable not set")
-        print("Set it with: export ODDSPAPI_KEY='your-api-key'")
+        print("Error: SGO_API_KEY or ODDSPAPI_KEY environment variable not set")
+        print("Set it with: export SGO_API_KEY='your-api-key'")
         sys.exit(1)
     
     fetcher = NBAOddsFetcher(api_key, args.bookmaker)
     
     if args.init_schema:
         fetcher.uploader.init_schema()
-    
-    if args.list_bookmakers:
-        print("\nAvailable bookmakers:")
-        for bm in fetcher.client.get_bookmakers():
-            print(f"  - {bm}")
-        fetcher.close()
-        return
     
     try:
         if args.continuous:

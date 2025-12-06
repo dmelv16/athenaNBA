@@ -203,14 +203,20 @@ class IncrementalUpdater:
         
         return player_games
     
-    def get_team_games_from_db(self, team_id: int, season: str) -> Set[str]:
-        """Get all game_ids for a team from team_game_logs"""
+    def get_team_games_from_db(self, team_id: int, season: str, since_date: datetime = None) -> Set[str]:
+        """Get all game_ids for a team from team_game_logs, optionally filtered by date"""
         query = """
             SELECT game_id FROM team_game_logs 
             WHERE team_id = %s AND season = %s
         """
+        params = [team_id, season]
+        
+        if since_date:
+            query += " AND game_date >= %s"
+            params.append(since_date)
+        
         with self.db.get_cursor() as cur:
-            cur.execute(query, (team_id, season))
+            cur.execute(query, params)
             results = cur.fetchall()
         return {str(r[0]) for r in results}
     
@@ -333,6 +339,7 @@ class IncrementalUpdater:
         logger.info("=" * 60)
         
         today = pd.Timestamp(datetime.now().date())
+        since_ts = pd.Timestamp(since_date) if since_date else None
         
         # Collect all roster player IDs
         all_roster_players = {}  # player_id -> {team_id, player_name}
@@ -350,9 +357,10 @@ class IncrementalUpdater:
         existing_player_games = self.get_existing_player_games(season, roster_player_ids)
         
         # For each team, get the games they've played (from team_game_logs)
+        # NOW WITH DATE FILTERING
         team_games: Dict[int, Set[str]] = {}
         for team_id in self.team_rosters.keys():
-            team_games[team_id] = self.get_team_games_from_db(team_id, season)
+            team_games[team_id] = self.get_team_games_from_db(team_id, season, since_date)
         
         # Determine which players need updates
         players_to_update = []
@@ -360,7 +368,7 @@ class IncrementalUpdater:
             team_id = info['team_id']
             player_name = info['player_name']
             
-            # Games this team has played
+            # Games this team has played (already filtered by date)
             team_game_ids = team_games.get(team_id, set())
             
             # Games this player already has logs for
@@ -385,7 +393,6 @@ class IncrementalUpdater:
         
         # Fetch and insert missing player game logs
         total_inserted = 0
-        existing_keys = set()  # Track what we insert
         
         for idx, player_info in enumerate(players_to_update, 1):
             player_id = player_info['player_id']
@@ -412,8 +419,9 @@ class IncrementalUpdater:
             new_games = new_games[new_games['wl'].notna()]
             new_games = new_games[new_games['game_date'] < today]
             
-            if since_date:
-                new_games = new_games[new_games['game_date'] >= pd.Timestamp(since_date)]
+            # Date filter is already applied via missing_games, but keep for safety
+            if since_ts:
+                new_games = new_games[new_games['game_date'] >= since_ts]
             
             if new_games.empty:
                 logger.info(f"  No new games after filtering")
