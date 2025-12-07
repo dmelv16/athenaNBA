@@ -599,6 +599,378 @@ def nba_game_odds(game_id):
         return jsonify(serialize(odds))
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+@app.route('/api/nba/game-predictions/today', methods=['GET'])
+def nba_game_predictions_today():
+    """Get model's team predictions (spread, total) with DraftKings lines and edge calculation"""
+    if not NBA_AVAILABLE:
+        return jsonify({'error': 'NBA not available'}), 503
+    
+    try:
+        today = date.today()
+        result = get_game_predictions_with_odds(today)
+        return jsonify(serialize(result))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/nba/game-predictions/date/<target_date>', methods=['GET'])
+def nba_game_predictions_by_date(target_date):
+    """Get model's team predictions for a specific date with DK lines"""
+    if not NBA_AVAILABLE:
+        return jsonify({'error': 'NBA not available'}), 503
+    
+    try:
+        parsed = datetime.strptime(target_date, '%Y-%m-%d').date()
+        result = get_game_predictions_with_odds(parsed)
+        return jsonify(serialize(result))
+    except ValueError:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def normalize_team_name(name):
+    """Normalize team names for matching between different sources"""
+    if not name:
+        return ''
+    # Remove common suffixes and normalize
+    name = name.upper().strip()
+    # Map full names to abbreviations
+    team_map = {
+        'ATL HAWKS': 'ATL', 'HAWKS': 'ATL', 'ATLANTA': 'ATL',
+        'BOS CELTICS': 'BOS', 'CELTICS': 'BOS', 'BOSTON': 'BOS',
+        'BKN NETS': 'BKN', 'NETS': 'BKN', 'BROOKLYN': 'BKN',
+        'CHA HORNETS': 'CHA', 'HORNETS': 'CHA', 'CHARLOTTE': 'CHA',
+        'CHI BULLS': 'CHI', 'BULLS': 'CHI', 'CHICAGO': 'CHI',
+        'CLE CAVALIERS': 'CLE', 'CAVALIERS': 'CLE', 'CAVS': 'CLE', 'CLEVELAND': 'CLE',
+        'DAL MAVERICKS': 'DAL', 'MAVERICKS': 'DAL', 'MAVS': 'DAL', 'DALLAS': 'DAL',
+        'DEN NUGGETS': 'DEN', 'NUGGETS': 'DEN', 'DENVER': 'DEN',
+        'DET PISTONS': 'DET', 'PISTONS': 'DET', 'DETROIT': 'DET',
+        'GS WARRIORS': 'GSW', 'WARRIORS': 'GSW', 'GOLDEN STATE': 'GSW', 'GSW': 'GSW',
+        'HOU ROCKETS': 'HOU', 'ROCKETS': 'HOU', 'HOUSTON': 'HOU',
+        'IND PACERS': 'IND', 'PACERS': 'IND', 'INDIANA': 'IND',
+        'LA CLIPPERS': 'LAC', 'CLIPPERS': 'LAC', 'LAC': 'LAC',
+        'LA LAKERS': 'LAL', 'LAKERS': 'LAL', 'LAL': 'LAL', 'LOS ANGELES LAKERS': 'LAL',
+        'MEM GRIZZLIES': 'MEM', 'GRIZZLIES': 'MEM', 'MEMPHIS': 'MEM',
+        'MIA HEAT': 'MIA', 'HEAT': 'MIA', 'MIAMI': 'MIA',
+        'MIL BUCKS': 'MIL', 'BUCKS': 'MIL', 'MILWAUKEE': 'MIL',
+        'MIN TIMBERWOLVES': 'MIN', 'TIMBERWOLVES': 'MIN', 'WOLVES': 'MIN', 'MINNESOTA': 'MIN',
+        'NO PELICANS': 'NOP', 'PELICANS': 'NOP', 'NEW ORLEANS': 'NOP', 'NOP': 'NOP',
+        'NY KNICKS': 'NYK', 'KNICKS': 'NYK', 'NEW YORK': 'NYK', 'NYK': 'NYK',
+        'OKC THUNDER': 'OKC', 'THUNDER': 'OKC', 'OKLAHOMA CITY': 'OKC',
+        'ORL MAGIC': 'ORL', 'MAGIC': 'ORL', 'ORLANDO': 'ORL',
+        'PHI 76ERS': 'PHI', '76ERS': 'PHI', 'SIXERS': 'PHI', 'PHILADELPHIA': 'PHI',
+        'PHX SUNS': 'PHX', 'SUNS': 'PHX', 'PHOENIX': 'PHX',
+        'POR TRAIL BLAZERS': 'POR', 'TRAIL BLAZERS': 'POR', 'BLAZERS': 'POR', 'PORTLAND': 'POR',
+        'SAC KINGS': 'SAC', 'KINGS': 'SAC', 'SACRAMENTO': 'SAC',
+        'SA SPURS': 'SAS', 'SPURS': 'SAS', 'SAN ANTONIO': 'SAS', 'SAS': 'SAS',
+        'TOR RAPTORS': 'TOR', 'RAPTORS': 'TOR', 'TORONTO': 'TOR',
+        'UTA JAZZ': 'UTA', 'JAZZ': 'UTA', 'UTAH': 'UTA',
+        'WAS WIZARDS': 'WAS', 'WIZARDS': 'WAS', 'WASHINGTON': 'WAS',
+    }
+    return team_map.get(name, name[:3] if len(name) >= 3 else name)
+
+
+def get_game_predictions_with_odds(target_date):
+    """
+    Combines model team predictions with DraftKings game lines
+    Returns games with predicted spread/total, actual lines, and edge
+    """
+    games = {}
+    
+    # 1. Get our model's team predictions
+    with nba_uploader.conn.cursor() as cur:
+        cur.execute("""
+            SELECT 
+                game_id, game_date,
+                home_team_id, home_team_abbrev,
+                away_team_id, away_team_abbrev,
+                prop_type, predicted_value, confidence,
+                lower_bound, upper_bound
+            FROM nba_team_predictions
+            WHERE prediction_date = %s OR game_date = %s
+            ORDER BY game_id, prop_type
+        """, (target_date, target_date))
+        
+        cols = [d[0] for d in cur.description]
+        for row in cur.fetchall():
+            pred = dict(zip(cols, row))
+            game_id = pred['game_id']
+            
+            if game_id not in games:
+                games[game_id] = {
+                    'game_id': game_id,
+                    'game_date': str(pred['game_date']),
+                    'home_team': pred['home_team_abbrev'],
+                    'away_team': pred['away_team_abbrev'],
+                    'home_team_id': pred['home_team_id'],
+                    'away_team_id': pred['away_team_id'],
+                    'predictions': {},
+                    'dk_lines': {},
+                    'edges': {}
+                }
+            
+            prop_type = pred['prop_type']
+            games[game_id]['predictions'][prop_type] = {
+                'value': float(pred['predicted_value']),
+                'confidence': float(pred['confidence']) if pred['confidence'] else None,
+                'lower': float(pred['lower_bound']) if pred['lower_bound'] else None,
+                'upper': float(pred['upper_bound']) if pred['upper_bound'] else None
+            }
+    
+    # 2. Get DraftKings game lines directly from the database
+    # Query the games and game_lines tables directly
+    with nba_uploader.conn.cursor() as cur:
+        cur.execute("""
+            SELECT 
+                g.id as games_table_id,
+                g.dk_event_id,
+                g.name as game_name,
+                g.home_team,
+                g.away_team,
+                g.start_time_mt,
+                gl.line_type,
+                gl.team,
+                gl.label,
+                gl.line,
+                gl.odds_american,
+                gl.odds_decimal
+            FROM games g
+            LEFT JOIN game_lines gl ON g.id = gl.game_id
+            WHERE DATE(g.start_time_mt) = %s
+            ORDER BY g.start_time_mt, g.id, gl.line_type
+        """, (target_date,))
+        
+        cols = [d[0] for d in cur.description]
+        dk_rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+    
+    # Group DK data by game
+    dk_games = {}
+    for row in dk_rows:
+        dk_id = row['dk_event_id']
+        if dk_id not in dk_games:
+            dk_games[dk_id] = {
+                'dk_event_id': dk_id,
+                'game_name': row['game_name'],
+                'home_team': row['home_team'],
+                'away_team': row['away_team'],
+                'start_time': row['start_time_mt'],
+                'moneyline': {'home': None, 'away': None},
+                'spread': {'home': None, 'away': None},
+                'total': {'over': None, 'under': None}
+            }
+        
+        dk_game = dk_games[dk_id]
+        line_type = row['line_type']
+        
+        if line_type == 'moneyline':
+            # Check if this team is home or away
+            team_abbrev = normalize_team_name(row['team'])
+            home_abbrev = normalize_team_name(dk_game['home_team'])
+            if team_abbrev == home_abbrev:
+                dk_game['moneyline']['home'] = {
+                    'team': row['team'],
+                    'odds_american': row['odds_american'],
+                    'odds_decimal': float(row['odds_decimal']) if row['odds_decimal'] else None
+                }
+            else:
+                dk_game['moneyline']['away'] = {
+                    'team': row['team'],
+                    'odds_american': row['odds_american'],
+                    'odds_decimal': float(row['odds_decimal']) if row['odds_decimal'] else None
+                }
+        
+        elif line_type == 'spread':
+            team_abbrev = normalize_team_name(row['team'])
+            home_abbrev = normalize_team_name(dk_game['home_team'])
+            spread_data = {
+                'team': row['team'],
+                'line': float(row['line']) if row['line'] is not None else None,
+                'odds_american': row['odds_american'],
+                'odds_decimal': float(row['odds_decimal']) if row['odds_decimal'] else None
+            }
+            if team_abbrev == home_abbrev:
+                dk_game['spread']['home'] = spread_data
+            else:
+                dk_game['spread']['away'] = spread_data
+        
+        elif line_type == 'total':
+            total_data = {
+                'line': float(row['line']) if row['line'] is not None else None,
+                'odds_american': row['odds_american'],
+                'odds_decimal': float(row['odds_decimal']) if row['odds_decimal'] else None
+            }
+            if row['label'] and 'over' in row['label'].lower():
+                dk_game['total']['over'] = total_data
+            elif row['label'] and 'under' in row['label'].lower():
+                dk_game['total']['under'] = total_data
+    
+    # 3. Match DK games to our predictions by team names
+    for dk_id, dk_game in dk_games.items():
+        dk_home = normalize_team_name(dk_game['home_team'])
+        dk_away = normalize_team_name(dk_game['away_team'])
+        
+        # Find matching game in our predictions
+        matched_game_id = None
+        for gid, game in games.items():
+            pred_home = normalize_team_name(game['home_team'])
+            pred_away = normalize_team_name(game['away_team'])
+            
+            if (pred_home == dk_home and pred_away == dk_away) or \
+               (pred_home == dk_home) or (pred_away == dk_away):
+                matched_game_id = gid
+                break
+        
+        if matched_game_id:
+            game = games[matched_game_id]
+            game['dk_event_id'] = dk_id
+            game['start_time'] = str(dk_game['start_time']) if dk_game['start_time'] else None
+            
+            # Store DK lines
+            if dk_game['spread']['home']:
+                game['dk_lines']['spread'] = {
+                    'home_line': dk_game['spread']['home'].get('line'),
+                    'home_odds': dk_game['spread']['home'].get('odds_american'),
+                    'away_line': dk_game['spread']['away'].get('line') if dk_game['spread']['away'] else None,
+                    'away_odds': dk_game['spread']['away'].get('odds_american') if dk_game['spread']['away'] else None
+                }
+            
+            if dk_game['total']['over']:
+                game['dk_lines']['total'] = {
+                    'line': dk_game['total']['over'].get('line'),
+                    'over_odds': dk_game['total']['over'].get('odds_american'),
+                    'under_odds': dk_game['total']['under'].get('odds_american') if dk_game['total']['under'] else None
+                }
+            
+            if dk_game['moneyline']['home']:
+                game['dk_lines']['moneyline'] = {
+                    'home_odds': dk_game['moneyline']['home'].get('odds_american'),
+                    'away_odds': dk_game['moneyline']['away'].get('odds_american') if dk_game['moneyline']['away'] else None
+                }
+        else:
+            # No prediction for this DK game, but we should still show it
+            # Create a new entry just with DK data
+            games[dk_id] = {
+                'game_id': dk_id,
+                'game_date': str(target_date),
+                'home_team': dk_home,
+                'away_team': dk_away,
+                'dk_event_id': dk_id,
+                'start_time': str(dk_game['start_time']) if dk_game['start_time'] else None,
+                'predictions': {},
+                'dk_lines': {},
+                'edges': {}
+            }
+            game = games[dk_id]
+            
+            if dk_game['spread']['home']:
+                game['dk_lines']['spread'] = {
+                    'home_line': dk_game['spread']['home'].get('line'),
+                    'home_odds': dk_game['spread']['home'].get('odds_american'),
+                    'away_line': dk_game['spread']['away'].get('line') if dk_game['spread']['away'] else None,
+                    'away_odds': dk_game['spread']['away'].get('odds_american') if dk_game['spread']['away'] else None
+                }
+            
+            if dk_game['total']['over']:
+                game['dk_lines']['total'] = {
+                    'line': dk_game['total']['over'].get('line'),
+                    'over_odds': dk_game['total']['over'].get('odds_american'),
+                    'under_odds': dk_game['total']['under'].get('odds_american') if dk_game['total']['under'] else None
+                }
+            
+            if dk_game['moneyline']['home']:
+                game['dk_lines']['moneyline'] = {
+                    'home_odds': dk_game['moneyline']['home'].get('odds_american'),
+                    'away_odds': dk_game['moneyline']['away'].get('odds_american') if dk_game['moneyline']['away'] else None
+                }
+    
+    # 4. Calculate edges for games that have both predictions and DK lines
+    # 
+    # IMPORTANT: Sign conventions differ between our model and DraftKings!
+    # 
+    # Our model's spread prediction:
+    #   - Positive (+13.5) = Home team wins by 13.5 points
+    #   - Negative (-5.0) = Home team loses by 5 points (away wins)
+    #
+    # DraftKings spread convention:
+    #   - Negative (-8.5) = Team is FAVORED to win by 8.5
+    #   - Positive (+8.5) = Team is UNDERDOG, expected to lose by 8.5
+    #
+    # So if our model says Home wins by +13.5 and DK has Home at -8.5:
+    #   - Both agree home wins, but model thinks by MORE
+    #   - Model spread in DK terms would be -13.5
+    #   - Edge = (-13.5) - (-8.5) = -5 points (model thinks home covers by 5 more)
+    #   - Recommendation: Bet HOME to cover -8.5
+    
+    for gid, game in games.items():
+        # Spread edge
+        if 'spread' in game.get('predictions', {}) and 'spread' in game.get('dk_lines', {}):
+            pred_spread = game['predictions']['spread']['value']  # Positive = home wins
+            dk_spread = game['dk_lines']['spread'].get('home_line')  # Negative = home favored
+            
+            if dk_spread is not None:
+                dk_spread_float = float(dk_spread)
+                
+                # Convert our prediction to DK convention (flip sign)
+                # Our +13.5 (home wins by 13.5) = DK -13.5 (home favored by 13.5)
+                model_spread_dk_convention = -pred_spread
+                
+                # Edge = how much better the line is than our prediction
+                # If model says -13.5 and DK offers -8.5, that's +5 points of value for home
+                spread_edge = dk_spread_float - model_spread_dk_convention
+                
+                # Positive edge = bet HOME (line is better than model expects)
+                # Negative edge = bet AWAY (model thinks away will cover)
+                if spread_edge > 1.5:
+                    recommendation = 'home'
+                elif spread_edge < -1.5:
+                    recommendation = 'away'
+                else:
+                    recommendation = 'no_bet'
+                
+                game['edges']['spread'] = {
+                    'edge_points': round(spread_edge, 1),
+                    'model_spread_dk': round(model_spread_dk_convention, 1),
+                    'recommendation': recommendation,
+                    'confidence': 'high' if abs(spread_edge) > 3 else ('medium' if abs(spread_edge) > 1.5 else 'low'),
+                    'explanation': f"Model: {game['home_team']} {model_spread_dk_convention:+.1f}, DK: {dk_spread_float:+.1f}"
+                }
+        
+        # Total edge (this one is straightforward - both use same convention)
+        if 'total' in game.get('predictions', {}) and 'total' in game.get('dk_lines', {}):
+            pred_total = game['predictions']['total']['value']
+            dk_total = game['dk_lines']['total'].get('line')
+            if dk_total is not None:
+                total_edge = pred_total - float(dk_total)
+                game['edges']['total'] = {
+                    'edge_points': round(total_edge, 1),
+                    'recommendation': 'over' if total_edge > 3 else ('under' if total_edge < -3 else 'no_bet'),
+                    'confidence': 'high' if abs(total_edge) > 5 else ('medium' if abs(total_edge) > 3 else 'low')
+                }
+    
+    # Convert to list and sort
+    games_list = list(games.values())
+    games_list.sort(key=lambda x: x.get('start_time') or x.get('game_id', ''))
+    
+    # Count recommendations
+    spread_bets = sum(1 for g in games_list 
+                      if g.get('edges', {}).get('spread', {}).get('recommendation') 
+                      and g['edges']['spread']['recommendation'] != 'no_bet')
+    total_bets = sum(1 for g in games_list 
+                     if g.get('edges', {}).get('total', {}).get('recommendation') 
+                     and g['edges']['total']['recommendation'] != 'no_bet')
+    
+    return {
+        'date': str(target_date),
+        'games': games_list,
+        'total_games': len(games_list),
+        'spread_recommendations': spread_bets,
+        'total_recommendations': total_bets,
+        'odds_available': True,
+        'dk_games_found': len(dk_games)
+    }
+
 # ============================================
 # NHL Endpoints
 # ============================================

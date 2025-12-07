@@ -62,6 +62,14 @@ class ApiService {
     return this.fetch(url);
   }
 
+  async getNBAGamePredictionsToday() {
+    return this.fetch('/nba/game-predictions/today');
+  }
+
+  async getNBAGamePredictionsByDate(date) {
+    return this.fetch(`/nba/game-predictions/date/${date}`);
+  }
+
   // NEW: Odds-related endpoints
   async getNBAOddsToday() {
     return this.fetch('/nba/odds/today');
